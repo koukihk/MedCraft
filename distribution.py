@@ -1,13 +1,14 @@
 import os
-from datetime import datetime
-import matplotlib.pyplot as plt
 import nibabel as nib
+import numpy as np
 import pandas as pd
-from scipy import ndimage
+from scipy import ndimage,stats
 
 
 def analyze_tumor_location(label_data):
     labeled_components, num_components = ndimage.label(label_data == 2)
+    np.save("labeled_components.npy", labeled_components)
+
     tumor_positions = []
 
     for i in range(1, num_components + 1):
@@ -41,30 +42,19 @@ def process_all_cts(data_folder):
     return result_df
 
 data_folder = "datafolds/04_LiTS"
-output_dir = f"distribution/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
 
 result_df = process_all_cts(data_folder)
-tumor_coordinates = []
+
+tumor_positions = []
 
 for _, row in result_df.iterrows():
     for tumor_pos in row['Tumor_Positions']:
-        tumor_coordinates.append({'x': tumor_pos[0], 'y': tumor_pos[1], 'z': tumor_pos[2]})
+        tumor_positions.append({'x': tumor_pos[0], 'y': tumor_pos[1], 'z': tumor_pos[2]})
 
-tumor_data = pd.DataFrame(tumor_coordinates)
+tumor_data = pd.DataFrame(tumor_positions)
 
-plt.figure(figsize=(12, 8))
-plt.hist2d(tumor_data['x'].values, tumor_data['y'].values, bins=(30, 30), cmap='viridis', cmin=1, alpha=0.7)
-plt.title('2D Heatmap of Tumor Coordinates in x-y Plane')
-plt.xlabel('x-coordinate')
-plt.ylabel('y-coordinate')
+mean_x, std_x = stats.norm.fit(tumor_data['x'])
+mean_y, std_y = stats.norm.fit(tumor_data['y'])
+mean_z, std_z = stats.norm.fit(tumor_data['z'])
 
-plt.scatter(tumor_data['x'].values, tumor_data['y'].values, marker='.', color='red', alpha=0.1)
-
-plt.xlim(min(tumor_data['x'].values), max(tumor_data['x'].values))
-plt.ylim(min(tumor_data['y'].values), max(tumor_data['y'].values))
-
-heatmap = os.path.join(output_dir, "overall_tumor_distribution.png")
-plt.savefig(heatmap)
+print(mean_x, std_x, mean_y, std_y, mean_z, std_z)

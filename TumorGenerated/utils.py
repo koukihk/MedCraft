@@ -75,23 +75,47 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     return Bj
 
 
+# Tumor density information
+mean_density = np.array([176.73915139826423, 253.0896817743491, 349.0154291224687])
+std_density = np.array([79.24462991125442, 65.39117631471075, 175.75417805089924])
+
+def generate_normal_sample(mean, std, size):
+    return np.random.normal(loc=mean, scale=std, size=size)
+
 # Step 1: Random select (numbers) location for tumor.
 def random_select(mask_scan):
-    # we first find z index and then sample point with z slice
+    # Find z index and then sample point with z slice
     z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
 
-    # we need to strict number z's position (0.3 - 0.7 in the middle of liver)
+    # Strictly position z in the middle of the liver (0.3 - 0.7)
     z = round(random.uniform(0.3, 0.7) * (z_end - z_start)) + z_start
 
     liver_mask = mask_scan[..., z]
 
-    # erode the mask (we don't want the edge points)
+    # Erode the mask (avoid edge points)
     kernel = np.ones((5, 5), dtype=np.uint8)
     liver_mask = cv2.erode(liver_mask, kernel, iterations=1)
 
-    coordinates = np.argwhere(liver_mask == 1)
-    random_index = np.random.randint(0, len(coordinates))
-    xyz = coordinates[random_index].tolist()  # get x,y
+    # Get liver coordinates
+    liver_coordinates = np.argwhere(liver_mask == 1)
+
+    # Generate random samples for x, y based on mean and std
+    mean_x, std_x = 176.73915139826423, 79.24462991125442
+    mean_y, std_y = 253.0896817743491, 65.39117631471075
+
+    x_samples = generate_normal_sample(mean_x, std_x, len(liver_coordinates))
+    y_samples = generate_normal_sample(mean_y, std_y, len(liver_coordinates))
+
+    # Add the generated samples to liver_coordinates
+    liver_coordinates[:, 0] += x_samples.astype(int)
+    liver_coordinates[:, 1] += y_samples.astype(int)
+
+    # Clip coordinates to be within the valid range
+    liver_coordinates = np.clip(liver_coordinates, 0, np.array(mask_scan.shape[:2]) - 1)
+
+    # Randomly select an index
+    random_index = np.random.randint(0, len(liver_coordinates))
+    xyz = liver_coordinates[random_index].tolist()  # get x, y
     xyz.append(z)
     potential_points = xyz
 

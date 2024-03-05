@@ -448,9 +448,6 @@ def main_worker(gpu, args):
                     depths=[2, 2, 2, 2]
                 )
 
-    elif args.model_name == 'mambaunet':
-        pass
-
     else:
         raise ValueError('Unsupported model ' + str(args.model_name))
         

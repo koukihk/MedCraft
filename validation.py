@@ -21,8 +21,6 @@ warnings.filterwarnings("ignore")
 import argparse
 parser = argparse.ArgumentParser(description='liver tumor validation')
 
-parser.add_argument('--syn', action='store_true')
-
 # file dir
 parser.add_argument('--val_dir', default=None, type=str)
 parser.add_argument('--json_dir', default=None, type=str)
@@ -153,30 +151,17 @@ def _get_model(args):
 def _get_loader(args):
     val_data_dir = args.val_dir
     datalist_json = args.json_dir
-    if args.syn:
-        val_org_transform = transforms.Compose(
-            [
-                transforms.LoadImaged(keys=["image", "label"]),
-                transforms.AddChanneld(keys=["image", "label"]),
-                # transforms.Orientationd(keys=["image"], axcodes="RAS"),
-                # transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
-                transforms.ScaleIntensityRanged(keys=["image"], a_min=-21, a_max=189, b_min=0.0, b_max=1.0, clip=True),
-                transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
-                transforms.ToTensord(keys=["image", "label"]),
-            ]
-        )
-    else:
-        val_org_transform = transforms.Compose(
-            [
-                transforms.LoadImaged(keys=["image", "label"]),
-                transforms.AddChanneld(keys=["image", "label"]),
-                transforms.Orientationd(keys=["image"], axcodes="RAS"),
-                transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
-                transforms.ScaleIntensityRanged(keys=["image"], a_min=-21, a_max=189, b_min=0.0, b_max=1.0, clip=True),
-                transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
-                transforms.ToTensord(keys=["image", "label"]),
-            ]
-        )
+    val_org_transform = transforms.Compose(
+        [
+            transforms.LoadImaged(keys=["image", "label"]),
+            transforms.AddChanneld(keys=["image", "label"]),
+            transforms.Orientationd(keys=["image"], axcodes="RAS"),
+            transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
+            transforms.ScaleIntensityRanged(keys=["image"], a_min=-21, a_max=189, b_min=0.0, b_max=1.0, clip=True),
+            transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
+            transforms.ToTensord(keys=["image", "label"]),
+        ]
+    )
     val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
     val_org_ds = data.Dataset(val_files, transform=val_org_transform)
     val_org_loader = data.DataLoader(val_org_ds, batch_size=1, shuffle=False, num_workers=4, sampler=None, pin_memory=True)
