@@ -114,7 +114,7 @@ def _get_model(args):
                 )
 
     elif args.model == 'segmamba':
-        from SegMamba.model_segmamba.segmamba import SegMamba
+        from SegMamba.model_segmamba.segmambaV0 import SegMamba
         model = SegMamba(
                     spatial_dims=3,
                     in_chans=1,

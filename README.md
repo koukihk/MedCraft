@@ -39,12 +39,12 @@ This forked repository encapsulates my personal modifications and ongoing replic
 
 ##### Mamba model
 
-|                |  SegMamba   | SegMamba(Global) | U-Mamba(2D) | Mamba-UNet(2D) |
-| :------------: | :---------: | :--------------: | :---------: | :------------: |
-| **Liver Dice** | **0.95851** |                  |             |                |
-| **Liver Nsd**  | **0.86826** |                  |             |                |
-| **Tumor Dice** | **0.51011** |                  |             |                |
-| **Tumor Nsd**  | **0.54203** |                  |             |                |
+|                | SegMambaV0  | SegMambaV0(Global) | SegMamba | SegMamba(Global) | U-Mamba(2D) | Mamba-UNet(2D) |
+| :------------: | :---------: | :----------------: | :------: | :--------------: | :---------: | :------------: |
+| **Liver Dice** | **0.95851** |    **0.94532**     |          |                  |             |                |
+| **Liver Nsd**  | **0.86826** |    **0.84355**     |          |                  |             |                |
+| **Tumor Dice** | **0.51011** |    **0.54694**     |          |                  |             |                |
+| **Tumor Nsd**  | **0.54203** |    **0.56692**     |          |                  |             |                |
 
 ##### Manual method modification
 

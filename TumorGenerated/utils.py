@@ -4,6 +4,7 @@ import cv2
 import elasticdeform
 import numpy as np
 from scipy.ndimage import gaussian_filter
+import distribution
 
 
 def generate_prob_function(mask_shape):
@@ -75,49 +76,33 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     return Bj
 
 
-# Tumor density information
-mean_density = np.array([176.73915139826423, 253.0896817743491, 349.0154291224687])
-std_density = np.array([79.24462991125442, 65.39117631471075, 175.75417805089924])
-
-def generate_normal_sample(mean, std, size):
-    return np.random.normal(loc=mean, scale=std, size=size)
-
 # Step 1: Random select (numbers) location for tumor.
 def random_select(mask_scan):
-    # Find z index and then sample point with z slice
+    # we first find z index and then sample point with z slice
     z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
 
-    # Strictly position z in the middle of the liver (0.3 - 0.7)
+    # we need to strict number z's position (0.3 - 0.7 in the middle of liver)
     z = round(random.uniform(0.3, 0.7) * (z_end - z_start)) + z_start
 
     liver_mask = mask_scan[..., z]
 
-    # Erode the mask (avoid edge points)
+    # erode the mask (we don't want the edge points)
     kernel = np.ones((5, 5), dtype=np.uint8)
     liver_mask = cv2.erode(liver_mask, kernel, iterations=1)
 
-    # Get liver coordinates
-    liver_coordinates = np.argwhere(liver_mask == 1)
-
-    # Generate random samples for x, y based on mean and std
-    mean_x, std_x = 176.73915139826423, 79.24462991125442
-    mean_y, std_y = 253.0896817743491, 65.39117631471075
-
-    x_samples = generate_normal_sample(mean_x, std_x, len(liver_coordinates))
-    y_samples = generate_normal_sample(mean_y, std_y, len(liver_coordinates))
-
-    # Add the generated samples to liver_coordinates
-    liver_coordinates[:, 0] += x_samples.astype(int)
-    liver_coordinates[:, 1] += y_samples.astype(int)
-
-    # Clip coordinates to be within the valid range
-    liver_coordinates = np.clip(liver_coordinates, 0, np.array(mask_scan.shape[:2]) - 1)
-
-    # Randomly select an index
-    random_index = np.random.randint(0, len(liver_coordinates))
-    xyz = liver_coordinates[random_index].tolist()  # get x, y
+    coordinates = np.argwhere(liver_mask == 1)
+    random_index = np.random.randint(0, len(coordinates))
+    xyz = coordinates[random_index].tolist()  # get x,y
     xyz.append(z)
     potential_points = xyz
+
+    return potential_points
+
+
+def random_select_mod(mask_scan, gmm_model):
+    potential_points = gmm_model.sample(1)
+    while mask_scan[potential_points[0], potential_points[1], potential_points[2]] != 1:
+        potential_points = gmm_model.sample(1)
 
     return potential_points
 
@@ -154,6 +139,7 @@ def get_fixed_geo(mask_scan, tumor_type):
         (mask_scan.shape[0] + enlarge_x, mask_scan.shape[1] + enlarge_y, mask_scan.shape[2] + enlarge_z), dtype=np.int8)
     # texture_map = np.zeros((mask_scan.shape[0] + enlarge_x, mask_scan.shape[1] + enlarge_y, mask_scan.shape[2] + enlarge_z), dtype=np.float16)
     tiny_radius, small_radius, medium_radius, large_radius = 4, 8, 16, 32
+    gmm_model = distribution.get_gmm_model()
 
     if tumor_type == 'tiny':
         num_tumor = random.randint(3, 10)
@@ -168,7 +154,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 1))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -191,7 +177,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -215,7 +201,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -239,7 +225,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -263,7 +249,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 1))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -286,7 +272,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -310,7 +296,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
@@ -333,7 +319,7 @@ def get_fixed_geo(mask_scan, tumor_type):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = random_select(mask_scan)
+            point = random_select_mod(mask_scan, gmm_model)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
             y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
