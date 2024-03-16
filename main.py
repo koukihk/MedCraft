@@ -14,6 +14,7 @@ import glob
 import subprocess
 
 import sys
+
 from os import environ
 
 from monai.inferers import sliding_window_inference
@@ -32,6 +33,8 @@ from networks.unetr import UNETR
 from networks.swin3d_unetr import SwinUNETR
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
 import warnings
+import distribution
+
 warnings.filterwarnings("ignore")
 
 ## Online Tumor Generation
@@ -253,13 +256,16 @@ def optuna_run(args):
 
 def _get_transform(args):
     if args.syn:
+        distribution.load_data_and_fit_gmm('datafolds/04_LiTS')
+        gmm_model = distribution.get_gmm_model()
+
         train_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
             transforms.AddChanneld(keys=["image", "label"]),
             transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
             transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-            TumorGenerated(keys=["image", "label"], prob=0.9), # here we use online 
+            TumorGenerated(keys=["image", "label"], prob=0.9, gmm_model=gmm_model), # here we use online
             transforms.ScaleIntensityRanged(
                 keys=["image"], a_min=-21, a_max=189,
                 b_min=0.0, b_max=1.0, clip=True,
@@ -364,6 +370,7 @@ def main():
             mp.spawn(main_worker, nprocs=args.ngpus_per_node, args=(args,))
 
         else:
+            # distribution.load_data_and_fit_gmm('datafolds/04_LiTS')
             # Simply call main_worker function
             main_worker(gpu=0, args=args)
 

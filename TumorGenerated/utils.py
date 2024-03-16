@@ -1,10 +1,10 @@
 ### Tumor Generateion
 import random
+
 import cv2
 import elasticdeform
 import numpy as np
 from scipy.ndimage import gaussian_filter
-import distribution
 
 
 def generate_prob_function(mask_shape):
@@ -24,7 +24,6 @@ def generate_prob_function(mask_shape):
 
 
 # first generate 5*200*200*200
-
 def get_texture(mask_shape):
     # get the prob function
     a = generate_prob_function(mask_shape)
@@ -99,10 +98,16 @@ def random_select(mask_scan):
     return potential_points
 
 
-def random_select_mod(mask_scan, gmm_model):
-    potential_points = gmm_model.sample(1)
-    while mask_scan[potential_points[0], potential_points[1], potential_points[2]] != 1:
-        potential_points = gmm_model.sample(1)
+def random_select_mod(mask_scan, gmm_model=None):
+    potential_points = gmm_model.sample(1)[0][0]
+    potential_points = np.round(potential_points).astype(int)
+    potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1)
+
+
+    while mask_scan[tuple(potential_points)] != 1:
+        potential_points = gmm_model.sample(1)[0][0]
+        potential_points = np.round(potential_points).astype(int)
+        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1)
 
     return potential_points
 
@@ -133,13 +138,12 @@ def get_ellipsoid(x, y, z):
     return out
 
 
-def get_fixed_geo(mask_scan, tumor_type):
+def get_fixed_geo(mask_scan, tumor_type, gmm_model=None):
     enlarge_x, enlarge_y, enlarge_z = 160, 160, 160
     geo_mask = np.zeros(
         (mask_scan.shape[0] + enlarge_x, mask_scan.shape[1] + enlarge_y, mask_scan.shape[2] + enlarge_z), dtype=np.int8)
     # texture_map = np.zeros((mask_scan.shape[0] + enlarge_x, mask_scan.shape[1] + enlarge_y, mask_scan.shape[2] + enlarge_z), dtype=np.float16)
     tiny_radius, small_radius, medium_radius, large_radius = 4, 8, 16, 32
-    gmm_model = distribution.get_gmm_model()
 
     if tumor_type == 'tiny':
         num_tumor = random.randint(3, 10)
@@ -336,8 +340,8 @@ def get_fixed_geo(mask_scan, tumor_type):
     return geo_mask
 
 
-def get_tumor(volume_scan, mask_scan, tumor_type, texture):
-    geo_mask = get_fixed_geo(mask_scan, tumor_type)
+def get_tumor(volume_scan, mask_scan, tumor_type, texture, gmm_model=None):
+    geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_model)
 
     sigma = np.random.uniform(1, 2)
     difference = np.random.uniform(65, 145)
@@ -353,7 +357,7 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture):
     return abnormally_full, abnormally_mask
 
 
-def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture):
+def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, gmm_model=None):
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
@@ -377,7 +381,7 @@ def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture):
     start_z = random.randint(0, texture.shape[2] - z_length - 1)
     cut_texture = texture[start_x:start_x + x_length, start_y:start_y + y_length, start_z:start_z + z_length]
 
-    liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture)
+    liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture, gmm_model)
     volume_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_volume
     mask_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_mask
 
