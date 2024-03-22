@@ -58,7 +58,7 @@ def analyze_tumor_location(label_data):
 
 def select_optimal_components(data):
     min_components = 1
-    max_components = 10
+    max_components = 30
     n_components_range = range(min_components, max_components + 1)
     aic_values = []
     bic_values = []
