@@ -113,6 +113,24 @@ def _get_model(args):
                     num_res_units=2,
                 )
 
+    elif args.model_name == 'nnunet':
+        from monai.networks.nets import DynUNet
+        from dynunet_pipeline.create_network import get_kernels_strides
+        from dynunet_pipeline.task_params import deep_supr_num
+        task_id = 'custom'
+        kernels, strides = get_kernels_strides(task_id)
+        model = DynUNet(
+            spatial_dims=3,
+            in_channels=1,
+            out_channels=3,
+            kernel_size=kernels,
+            strides=strides,
+            upsample_kernel_size=strides[1:],
+            norm_name="instance",
+            deep_supervision=False,
+            deep_supr_num=deep_supr_num[task_id],
+        )
+
     elif args.model == 'segmamba':
         from SegMamba.model_segmamba.segmambaV0 import SegMamba
         model = SegMamba(
