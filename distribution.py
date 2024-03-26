@@ -8,7 +8,7 @@ all_tumor_positions = None
 gmm_model = None
 has_fitted_gmm = False
 
-def load_data_and_fit_gmm(data_folder):
+def load_data_and_fit_gmm(data_folder, optimal_components):
     global all_tumor_positions, gmm_model, has_fitted_gmm
 
     if not has_fitted_gmm:
@@ -33,7 +33,6 @@ def load_data_and_fit_gmm(data_folder):
 
             all_tumor_positions = np.array(all_tumor_positions)
 
-        optimal_components = select_optimal_components(all_tumor_positions)
         gmm_model = GaussianMixture(n_components=optimal_components)
         gmm_model.fit(all_tumor_positions)
         has_fitted_gmm = True
@@ -55,22 +54,3 @@ def analyze_tumor_location(label_data):
         tumor_positions.append(center_coords)  # 改为不使用tuple，只保留坐标数组
 
     return labeled_components, tumor_positions
-
-def select_optimal_components(data):
-    min_components = 1
-    max_components = 30
-    n_components_range = range(min_components, max_components + 1)
-    aic_values = []
-    bic_values = []
-
-    for n_components in n_components_range:
-        gmm = GaussianMixture(n_components=n_components)
-        gmm.fit(data)
-        aic_values.append(gmm.aic(data))
-        bic_values.append(gmm.bic(data))
-
-    optimal_n_components_aic = n_components_range[np.argmin(aic_values)]
-    optimal_n_components_bic = n_components_range[np.argmin(bic_values)]
-
-    return min(optimal_n_components_aic, optimal_n_components_bic)
-

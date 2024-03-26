@@ -113,11 +113,11 @@ def _get_model(args):
                     num_res_units=2,
                 )
 
-    elif args.model_name == 'nnunet':
+    elif args.model == 'nnunet':
         from monai.networks.nets import DynUNet
         from dynunet_pipeline.create_network import get_kernels_strides
         from dynunet_pipeline.task_params import deep_supr_num
-        task_id = 'custom'
+        task_id = '03'
         kernels, strides = get_kernels_strides(task_id)
         model = DynUNet(
             spatial_dims=3,

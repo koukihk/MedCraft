@@ -28,13 +28,12 @@ from monai.transforms import AsDiscrete, Activations, Compose
 from monai import transforms, data
 from monai_trainer import AMDistributedSampler, run_training
 from datafolds.datafold_read import datafold_read
-from optimizers.lr_scheduler import WarmupCosineSchedule, LinearWarmupCosineAnnealingLR, PolynomialLR
+from optimizers.lr_scheduler import WarmupCosineSchedule, LinearWarmupCosineAnnealingLR
 from networks.unetr import UNETR
 from networks.swin3d_unetr import SwinUNETR
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
 import warnings
-
-# import distribution
+import distribution
 
 warnings.filterwarnings("ignore")
 
@@ -46,6 +45,7 @@ import argparse
 parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')
+parser.add_argument('--optimal_components', default=3, type=int)
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
 parser.add_argument('--logdir', default=None)
@@ -252,8 +252,9 @@ def optuna_run(args):
 
 def _get_transform(args):
     if args.syn:
-        # distribution.load_data_and_fit_gmm('datafolds/04_LiTS')
-        # gmm_model = distribution.get_gmm_model()
+        optimal_components = args.optimal_components
+        distribution.load_data_and_fit_gmm('datafolds/04_LiTS', optimal_components)
+        gmm_model = distribution.get_gmm_model()
 
         train_transform = transforms.Compose(
             [
@@ -261,7 +262,7 @@ def _get_transform(args):
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=0.9),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_model=gmm_model),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -478,7 +479,6 @@ def main_worker(gpu, args):
         print('Use pretrained weights')
 
     dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
-    # dice_loss = torch.nn.CrossEntropyLoss()
 
     post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
     post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
@@ -596,8 +596,6 @@ def main_worker(gpu, args):
     elif args.optim_name == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), lr=args.optim_lr, momentum=0.99, nesterov=True,
                                     weight_decay=args.reg_weight)  # momentum 0.99, nestorov=True, following nnUnet
-    elif args.optim_name == 'sgdm':
-        optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, weight_decay=1e-5)
     else:
         raise ValueError('Unsupported optim_name' + str(args.optim_name))
 
@@ -605,12 +603,13 @@ def main_worker(gpu, args):
         scheduler = LinearWarmupCosineAnnealingLR(
             optimizer, warmup_epochs=args.warmup_epochs, max_epochs=args.max_epochs
         )
+
+
     elif args.lrschedule == 'cosine_anneal':
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.max_epochs)
         if args.checkpoint is not None:
             scheduler.step(epoch=start_epoch)
-    elif args.lrschedule == 'polynomial':
-        scheduler = PolynomialLR(optimizer, max_decay_steps=args.max_epochs, end_learning_rate=0.0, power=1.0)
+
     else:
         scheduler = None
 
