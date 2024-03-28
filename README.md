@@ -1,3 +1,8 @@
+### Perliminary
+
+This repository stores some of the code used for synthetic tumors and for the training and evaluation of segmentation models with associated results.
+In general, if not specifically labeled, during all model training, random patches of 96 × 96 × 96 were cropped from 3D image volumes during training. All models are trained for 4,000 epochs, and the base learning rate is 0.0002. The batch size is two per GPU. We adopt the linear warmup strategy and the cosine annealing learning rate schedule. For inference, we use the sliding window strategy by setting the overlapping area ratio to 0.75.
+
 ### AI model trained by synthetic tumors(Downloaded,Control experiment)
 
 |                |         UNET         | Swin-UNETR-Base  (pretrain) | Swin-UNETR-Base (no.pretrain) | Swin-UNETR-Small (no.pretrain) | Swin-UNETR-Tiny (no.pretrain) |
@@ -20,12 +25,12 @@
 
 #### Traditional model
 
-|                |         UNET         | UNET(Global) | nnUNet | nnUNet(Global) | Swin-UNETR-Base  (pretrain) | Swin-UNETR-Base (no.pretrain) | Swin-UNETR-Small (no.pretrain) | Swin-UNETR-Tiny (no.pretrain) |
-| :------------: | :------------------: | :----------: | :----: | :------------: | :-------------------------: | :---------------------------: | :----------------------------: | :---------------------------: |
-| **Liver Dice** |     **0.96450**      | **0.95408**  |        |                |         **0.96476**         |          **0.96409**          |          **0.96401**           |          **0.96276**          |
-| **Liver Nsd**  |     **0.89170**      | **0.87262**  |        |                |         **0.89265**         |          **0.88995**          |          **0.88962**           |          **0.88353**          |
-| **Tumor Dice** | **0.57500** - 0.5981 | **0.60817**  |        |                |    **0.57025 - 0.5594**     |     **0.55158 - 0.5594**      |      **0.54079 - 0.5637**      |     **0.53372 - 0.5510**      |
-| **Tumor Nsd**  | **0.62084** - 0.6128 | **0.63772**  |        |                |    **0.60829** - 0.5820     |      **0.60278** - 0.582      |      **0.58507** - 0.5824      |     **0.56287** - 0.5561      |
+|                |         UNET         | UNET(Global) |   nnUNet    | nnUNet(Global) | Swin-UNETR-Base  (pretrain) | Swin-UNETR-Base (no.pretrain) | Swin-UNETR-Small (no.pretrain) | Swin-UNETR-Tiny (no.pretrain) |
+| :------------: | :------------------: | :----------: | :---------: | :------------: | :-------------------------: | :---------------------------: | :----------------------------: | :---------------------------: |
+| **Liver Dice** |     **0.96450**      | **0.95408**  | **0.96340** |  **0.95520**   |         **0.96476**         |          **0.96409**          |          **0.96401**           |          **0.96276**          |
+| **Liver Nsd**  |     **0.89170**      | **0.87262**  | **0.88493** |  **0.87021**   |         **0.89265**         |          **0.88995**          |          **0.88962**           |          **0.88353**          |
+| **Tumor Dice** | **0.57500** - 0.5981 | **0.60817**  | **0.54407** |  **0.59870**   |    **0.57025 - 0.5594**     |     **0.55158 - 0.5594**      |      **0.54079 - 0.5637**      |     **0.53372 - 0.5510**      |
+| **Tumor Nsd**  | **0.62084** - 0.6128 | **0.63772**  | **0.57940** |  **0.62433**   |    **0.60829** - 0.5820     |      **0.60278** - 0.582      |      **0.58507** - 0.5824      |     **0.56287** - 0.5561      |
 
 #### Mamba model
 
@@ -44,6 +49,15 @@
 | **Liver Nsd**  |  **0.88727**  |                      |   **0.88020**    |    **0.88341**    |    **0.87753**    |    **0.87860**    |    **0.87605**    |    **0.85615**    | **0.86665**  |
 | **Tumor Dice** |  **0.53748**  |                      |   **0.55767**    |    **0.56752**    |    **0.53391**    |    **0.58081**    |    **0.54269**    |    **0.45940**    | **0.51179**  |
 | **Tumor Nsd**  |  **0.58419**  |                      |   **0.60392**    |    **0.61096**    |    **0.56607**    |    **0.62556**    |    **0.55893**    |    **0.45606**    | **0.54367**  |
+
+#### Diffusion methods
+
+|                | Difftumor(JHU) | GEM-3D(HKU) |
+| :------------: | :------------: | :---------: |
+| **Liver Dice** |                |             |
+| **Liver Nsd**  |                |             |
+| **Tumor Dice** |                |             |
+| **Tumor Nsd**  |                |             |
 
 ### AI model trained by real tumors for comparison(Self)
 
