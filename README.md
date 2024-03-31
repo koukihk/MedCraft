@@ -3,6 +3,16 @@
 This repository stores some of the code used for synthetic tumors and for the training and evaluation of segmentation models with associated results.
 In general, if not specifically labeled, during all model training, random patches of 96 × 96 × 96 were cropped from 3D image volumes during training. All models are trained for 4,000 epochs, and the base learning rate is 0.0002. The batch size is two per GPU. We adopt the linear warmup strategy and the cosine annealing learning rate schedule. For inference, we use the sliding window strategy by setting the overlapping area ratio to 0.75.
 
+### Related Papers
+
+**Towards Generalizable Tumor Synthesis** *Qi Chen, Xiaoxi Chen, Haorui Song, Zhiwei Xiong, Alan Yuille, Chen Wei, Zongwei Zhou* CVPR | 29 Feb 2024 [paper](https://arxiv.org/pdf/2402.19470.pdf)
+
+**Label-Free Liver Tumor Segmentation** *Qixin Hu, Yixiong Chen, Junfei Xiao, Shuwen Sun, Jieneng Chen, Alan Yuille, Zongwei Zhou* CVPR | 27 March 2023 [paper](https://arxiv.org/abs/2303.14869) 
+
+**Generative Enhancement for 3D Medical Images**  *Zhu, Lingting and Codella, Noel and Chen, Dongdong and Jin, Zhenchao and Yuan, Lu and Yu, Lequan* arXiv preprint arXiv:2403.12852 | 19 Mar 2024 [paper](https://arxiv.org/abs/2403.12852)
+
+**SegMamba: Long-range Sequential Modeling Mamba For 3D Medical Image Segmentation** *Zhaohu Xing, Tian Ye, Yijun Yang, Guang Liu, Lei Zhu* arXiv preprint arXiv:2401.13560 | 25 Feb 2024 [paper](https://arxiv.org/abs/2401.13560)
+
 ### AI model trained by synthetic tumors(Downloaded,Control experiment)
 
 |                |         UNET         | Swin-UNETR-Base  (pretrain) | Swin-UNETR-Base (no.pretrain) | Swin-UNETR-Small (no.pretrain) | Swin-UNETR-Tiny (no.pretrain) |
@@ -32,14 +42,23 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** | **0.57500** - 0.5981 | **0.60817**  | **0.54407** |  **0.59870**   |    **0.57025 - 0.5594**     |     **0.55158 - 0.5594**      |      **0.54079 - 0.5637**      |     **0.53372 - 0.5510**      |
 | **Tumor Nsd**  | **0.62084** - 0.6128 | **0.63772**  | **0.57940** |  **0.62433**   |    **0.60829** - 0.5820     |      **0.60278** - 0.582      |      **0.58507** - 0.5824      |     **0.56287** - 0.5561      |
 
-#### Mamba model
+#### Mamba Model
 
-|                | SegMambaV0  | SegMambaV0(Global) | SegMambaV1  | SegMambaV1(Global) | SegMambaV2 | SegMambaV2(Global) | U-Mamba(2D) | Mamba-UNet(2D) |
-| :------------: | :---------: | :----------------: | :---------: | :----------------: | ---------- | ------------------ | :---------: | :------------: |
-| **Liver Dice** | **0.95851** |    **0.94532**     | **0.96300** |    **0.95292**     |            |                    |             |                |
-| **Liver Nsd**  | **0.86826** |    **0.84355**     | **0.88415** |    **0.86724**     |            |                    |             |                |
-| **Tumor Dice** | **0.51011** |    **0.54694**     | **0.55682** |    **0.58262**     |            |                    |             |                |
-| **Tumor Nsd**  | **0.54203** |    **0.56692**     | **0.58413** |    **0.59475**     |            |                    |             |                |
+|                | SegMambaV0  | SegMambaV0(Global) | SegMambaV1  | SegMambaV1(Global) |
+| :------------: | :---------: | :----------------: | :---------: | :----------------: |
+| **Liver Dice** | **0.95851** |    **0.94532**     | **0.96300** |    **0.95292**     |
+| **Liver Nsd**  | **0.86826** |    **0.84355**     | **0.88415** |    **0.86724**     |
+| **Tumor Dice** | **0.51011** |    **0.54694**     | **0.55682** |    **0.58262**     |
+| **Tumor Nsd**  | **0.54203** |    **0.56692**     | **0.58413** |    **0.59475**     |
+
+#### Diffusion Model
+
+|                | Difftumor-UNet(Chen‘s Val) | Difftumor-UNet(Hu's Val) | Difftumor-UNet(Global) | GEM-3D |
+| :------------: | :------------------------: | :----------------------: | :--------------------: | :----: |
+| **Liver Dice** |        **0.94906**         |       **0.96005**        |                        |        |
+| **Liver Nsd**  |        **0.88588**         |       **0.91371**        |                        |        |
+| **Tumor Dice** |        **0.69001**         |       **0.68217**        |                        |        |
+| **Tumor Nsd**  |        **0.69970**         |       **0.74257**        |                        |        |
 
 #### Manual method modification
 
@@ -49,15 +68,6 @@ In general, if not specifically labeled, during all model training, random patch
 | **Liver Nsd**  |  **0.88727**  |                      |   **0.88020**    |    **0.88341**    |    **0.87753**    |    **0.87860**    |    **0.87605**    |    **0.85615**    | **0.86665**  |
 | **Tumor Dice** |  **0.53748**  |                      |   **0.55767**    |    **0.56752**    |    **0.53391**    |    **0.58081**    |    **0.54269**    |    **0.45940**    | **0.51179**  |
 | **Tumor Nsd**  |  **0.58419**  |                      |   **0.60392**    |    **0.61096**    |    **0.56607**    |    **0.62556**    |    **0.55893**    |    **0.45606**    | **0.54367**  |
-
-#### Diffusion methods
-
-|                | Difftumor(JHU) | GEM-3D(HKU) |
-| :------------: | :------------: | :---------: |
-| **Liver Dice** |                |             |
-| **Liver Nsd**  |                |             |
-| **Tumor Dice** |                |             |
-| **Tumor Nsd**  |                |             |
 
 ### AI model trained by real tumors for comparison(Self)
 
