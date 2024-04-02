@@ -51,14 +51,28 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** | **0.51011** |    **0.54694**     | **0.55682** |    **0.58262**     |
 | **Tumor Nsd**  | **0.54203** |    **0.56692**     | **0.58413** |    **0.59475**     |
 
-#### Diffusion Model
+#### Difftumor
 
-|                | Difftumor-UNet(Chen‘s Val) | Difftumor-UNet(Hu's Val) | Difftumor-UNet(Global) | GEM-3D |
-| :------------: | :------------------------: | :----------------------: | :--------------------: | :----: |
-| **Liver Dice** |        **0.94906**         |       **0.96005**        |                        |        |
-| **Liver Nsd**  |        **0.88588**         |       **0.91371**        |                        |        |
-| **Tumor Dice** |        **0.69001**         |       **0.68217**        |                        |        |
-| **Tumor Nsd**  |        **0.69970**         |       **0.74257**        |                        |        |
+|                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
+| :------------: | :--------------: | :------------: | :----------: |
+| **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
+| **Liver Nsd**  |   **0.88588**    |  **0.91371**   | **0.88923**  |
+| **Tumor Dice** |   **0.69001**    |  **0.68217**   | **0.75031**  |
+| **Tumor Nsd**  |   **0.69970**    |  **0.74257**   | **0.77798**  |
+
+|                | nnUNet(Chen‘s Val) | nnUNet(Hu's Val) | nnUNet(Global) |
+| :------------: | :----------------: | :--------------: | :------------: |
+| **Liver Dice** |                    |                  |                |
+| **Liver Nsd**  |                    |                  |                |
+| **Tumor Dice** |                    |                  |                |
+| **Tumor Nsd**  |                    |                  |                |
+
+|                | SwinUNETR(Chen‘s Val) | SwinUNETR(Hu's Val) | SwinUNETR(Global) |
+| :------------: | :-------------------: | :-----------------: | :---------------: |
+| **Liver Dice** |                       |                     |                   |
+| **Liver Nsd**  |                       |                     |                   |
+| **Tumor Dice** |                       |                     |                   |
+| **Tumor Nsd**  |                       |                     |                   |
 
 #### Manual method modification
 

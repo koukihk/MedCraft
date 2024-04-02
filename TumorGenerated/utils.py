@@ -1,6 +1,6 @@
 ### Tumor Generateion
 import random
-
+import json, time
 import cv2
 import elasticdeform
 import numpy as np
@@ -98,17 +98,21 @@ def random_select(mask_scan):
     return potential_points
 
 
-def random_select_mod(mask_scan, gmm_model=None):
-    potential_points = gmm_model.sample(1)[0][0]
-    potential_points = np.round(potential_points).astype(int)
-    potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1)
-
-
-    while mask_scan[tuple(potential_points)] != 1:
+def random_select_mod(mask_scan, gmm_model=None, max_attempts=1000):
+    start_time = time.time()
+    loop_count = 0
+    while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
         potential_points = np.round(potential_points).astype(int)
         potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1)
-
+        if mask_scan[tuple(potential_points)] == 1:
+            end_time = time.time()
+            duration = end_time - start_time
+            # print("GMM sample execution time:", duration, "seconds")
+            return potential_points
+        loop_count += 1
+    print("Max attempts reached. No valid point found.")
+    potential_points = random_select(mask_scan)
     return potential_points
 
 

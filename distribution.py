@@ -26,7 +26,7 @@ def load_data_and_fit_gmm(data_folder, optimal_components):
                     continue
 
                 label_data = nib.load(label_path).get_fdata()
-                labeled_components, tumor_positions = analyze_tumor_location(label_data)
+                tumor_positions = analyze_tumor_location(label_data, 2)
 
                 if tumor_positions:
                     all_tumor_positions.extend(tumor_positions)
@@ -43,14 +43,27 @@ def get_all_tumor_positions():
 def get_gmm_model():
     return gmm_model
 
-def analyze_tumor_location(label_data):
-    labeled_components, num_components = ndimage.label(label_data == 2)
+def analyze_tumor_location(label_data, tumor_label=2):
+    """
+    Analyze tumor location in label data.
+
+    Parameters:
+        label_data (ndarray): Label data containing tumor labels.
+        tumor_label (int): Label value indicating tumor region. Default is 2.
+
+    Returns:
+        list: List of tumor positions, each position represented as a tuple (z, y, x).
+    """
+    labeled_components, num_components = ndimage.label(label_data == tumor_label)
 
     tumor_positions = []
 
     for i in range(1, num_components + 1):
-        bounding_box = ndimage.find_objects(labeled_components == i)[0]
-        center_coords = [int((slice.start + slice.stop - 1) / 2) for slice in bounding_box]
-        tumor_positions.append(center_coords)  # 改为不使用tuple，只保留坐标数组
+        labeled_tumor = labeled_components == i
+        tumor_indices = np.transpose(np.nonzero(labeled_tumor))
 
-    return labeled_components, tumor_positions
+        # Calculate tumor centroid
+        centroid = tuple(np.mean(tumor_indices, axis=0).astype(int))
+        tumor_positions.append(centroid)
+
+    return tumor_positions
