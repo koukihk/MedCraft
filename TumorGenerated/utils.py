@@ -98,7 +98,7 @@ def random_select(mask_scan):
     return potential_points
 
 
-def random_select_mod(mask_scan, gmm_model=None, max_attempts=800):
+def random_select_mod(mask_scan, gmm_model=None, max_attempts=600):
     if gmm_model is None:
         potential_points = random_select(mask_scan)
         return potential_points

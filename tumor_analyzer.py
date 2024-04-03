@@ -9,9 +9,10 @@ class TumorAnalyzer:
         self.all_tumor_positions = None
         self.gmm_model = None
         self.has_fitted_gmm = False
+        self.indices_to_skip = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
 
     def fit_gmm_model(self, data, optimal_components):
-        self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='diag')
+        self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='random', tol=0.001, max_iter=100)
         self.gmm_model.fit(data)
 
     def load_data(self, data_folder):
@@ -23,6 +24,10 @@ class TumorAnalyzer:
                 continue
             img_path = os.path.join(data_folder, "img", ct_file)
             label_path = os.path.join(data_folder, "label", ct_file)
+
+            file_index = int(ct_file.split('_')[1].split('.')[0])
+            if file_index in self.indices_to_skip:
+                continue
 
             if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
                 continue
