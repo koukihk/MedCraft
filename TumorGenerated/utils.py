@@ -106,12 +106,10 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=800):
     loop_count = 0
     while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
-        # potential_points = np.round(potential_points).astype(int)
-        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1)
+        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_points)] == 1:
             return potential_points
         loop_count += 1
-    # print("Max attempts reached. No valid point found.")
 
     potential_points = random_select(mask_scan)
     return potential_points

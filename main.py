@@ -33,7 +33,7 @@ from networks.unetr import UNETR
 from networks.swin3d_unetr import SwinUNETR
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
 import warnings
-import distribution
+from tumor_analyzer import TumorAnalyzer
 
 warnings.filterwarnings("ignore")
 
@@ -254,8 +254,9 @@ def _get_transform(args):
     if args.syn:
         start_time = time.time()
         optimal_components = args.optimal_components
-        distribution.load_data_and_fit_gmm('datafolds/04_LiTS', optimal_components)
-        gmm_model = distribution.get_gmm_model()
+        analyzer = TumorAnalyzer()
+        analyzer.load_data_and_fit_gmm('datafolds/04_LiTS', optimal_components)
+        gmm_model = analyzer.get_gmm_model()
         end_time = time.time()
         duration = end_time - start_time
         print("GMM fixing execution time:", duration, "seconds")
