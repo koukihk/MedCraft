@@ -17,7 +17,7 @@ class TumorAnalyzer:
         """
         Fits a Gaussian Mixture Model to the given data.
         """
-        self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='random', tol=0.001, max_iter=100)
+        self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='kmeans', tol=0.0001, max_iter=200)
         self.gmm_model.fit(data)
 
     @staticmethod
@@ -73,7 +73,7 @@ class TumorAnalyzer:
         for i in range(1, num_components + 1):
             labeled_tumor = labeled_components == i
             tumor_indices = np.transpose(np.nonzero(labeled_tumor))
-            centroid = tuple(np.mean(tumor_indices, axis=0).astype(int))
+            centroid = tuple(np.mean(tumor_indices, axis=0))
             tumor_positions.append(centroid)
 
         return tumor_positions
