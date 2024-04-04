@@ -20,34 +20,34 @@ class TumorAnalyzer:
         self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='random', tol=0.001, max_iter=100)
         self.gmm_model.fit(data)
 
+    @staticmethod
+    def process_file(ct_file, data_folder, indices_to_skip):
+        if ct_file.startswith("._"):
+            return []
+
+        img_path = os.path.join(data_folder, "img", ct_file)
+        label_path = os.path.join(data_folder, "label", ct_file)
+
+        file_index = int(ct_file.split('_')[1].split('.')[0])
+        if file_index in indices_to_skip:
+            return []
+
+        if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
+            return []
+
+        label_data = nib.load(label_path).get_fdata()
+        positions = TumorAnalyzer.analyze_tumor_location(label_data, tumor_label=2)
+
+        return positions
+
     def load_data(self, data_folder):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
         ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
-        tumor_positions = []
-
-        def process_file(ct_file):
-            if ct_file.startswith("._"):
-                return []
-
-            img_path = os.path.join(data_folder, "img", ct_file)
-            label_path = os.path.join(data_folder, "label", ct_file)
-
-            file_index = int(ct_file.split('_')[1].split('.')[0])
-            if file_index in self.indices_to_skip:
-                return []
-
-            if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
-                return []
-
-            label_data = nib.load(label_path).get_fdata()
-            positions = self.analyze_tumor_location(label_data, tumor_label=2)
-
-            return positions
 
         with Pool() as pool:
-            results = pool.map(process_file, ct_files)
+            results = pool.starmap(TumorAnalyzer.process_file, [(ct_file, data_folder, self.indices_to_skip) for ct_file in ct_files])
 
         tumor_positions = [position for sublist in results for position in sublist]
 
@@ -62,7 +62,8 @@ class TumorAnalyzer:
             self.fit_gmm_model(self.all_tumor_positions, optimal_components)
             self.has_fitted_gmm = True
 
-    def analyze_tumor_location(self, label_data, tumor_label=2):
+    @staticmethod
+    def analyze_tumor_location(label_data, tumor_label=2):
         """
         Analyzes tumor location from label data.
         """
