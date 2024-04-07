@@ -18,10 +18,12 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  prob: float = 0.1,
                  tumor_prob=[0.2, 0.2, 0.2, 0.2, 0.2],
                  allow_missing_keys: bool = False,
+                 save_flag: bool = False,
                  gmm_model=None
                  ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)
+        self.save_flag = save_flag
         self.gmm_model = gmm_model
         random.seed(0)
         np.random.seed(0)
@@ -91,5 +93,6 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture, self.gmm_model)
             # print(tumor_type, d['image'].shape, np.max(d['label']))
-            self.save_data(d, tumor_type)
+            if self.save_flag:
+                self.save_data(d, tumor_type)
         return d
