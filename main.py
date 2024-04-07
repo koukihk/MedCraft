@@ -276,14 +276,22 @@ def _get_transform(args):
     else:
         gmm_model = None
 
-    if args.syn or args.gen:
+    if args.gen:
+        train_transform = transforms.Compose(
+            [
+                transforms.LoadImaged(keys=["image", "label"]),
+                transforms.AddChanneld(keys=["image", "label"]),
+                TumorGenerated(keys=["image", "label"], prob=tumor_prob, save_flag=save_flag, gmm_model=gmm_model),  # here we use online
+            ]
+        )
+    elif args.syn:
         train_transform = transforms.Compose(
             [
                 transforms.LoadImaged(keys=["image", "label"]),
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=tumor_prob, save_flag=save_flag, gmm_model=gmm_model),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=tumor_prob),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -388,8 +396,6 @@ def main():
             mp.spawn(main_worker, nprocs=args.ngpus_per_node, args=(args,))
 
         else:
-            # distribution.load_data_and_fit_gmm('datafolds/04_LiTS')
-            # Simply call main_worker function
             main_worker(gpu=0, args=args)
 
 
@@ -482,15 +488,6 @@ def main_worker(gpu, args):
             deep_supr_num=deep_supr_num[task_id],
         )
 
-    elif args.model_name == 'segmamba':
-        from SegMamba.model_segmamba.segmamba import SegMamba
-        model = SegMamba(
-            spatial_dims=3,
-            in_chans=1,
-            out_chans=3,
-            depths=[2, 2, 2, 2]
-        )
-
     else:
         raise ValueError('Unsupported model ' + str(args.model_name))
 
@@ -540,15 +537,6 @@ def main_worker(gpu, args):
 
     print('train_files files', len(new_datalist), 'validation files', len(new_val_files))
 
-    # train_ds = data.Dataset(data=new_datalist, transform=train_transform)
-    # cache dataset
-    # train_ds = data.CacheDataset(
-    #             data=datalist,
-    #             transform=train_transform,
-    #             cache_num=args.cache_num,
-    #             cache_rate=1.0,
-    #             num_workers=args.workers,
-    #         )
     train_ds = data.SmartCacheDataset(
         data=datalist,
         transform=train_transform,
@@ -563,13 +551,6 @@ def main_worker(gpu, args):
                                    sampler=train_sampler, pin_memory=True)
 
     val_ds = data.Dataset(data=new_val_files, transform=val_transform)
-    # val_ds = data.CacheDataset(
-    #             data=new_val_files,
-    #             transform=val_transform,
-    #             cache_num=args.cache_num,
-    #             cache_rate=1.0,
-    #             num_workers=args.workers,
-    #         )
     val_sampler = AMDistributedSampler(val_ds, shuffle=False) if args.distributed else None
     val_loader = data.DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, sampler=val_sampler,
                                  pin_memory=True)
@@ -596,7 +577,6 @@ def main_worker(gpu, args):
             start_epoch = checkpoint['epoch']
         if 'best_acc' in checkpoint:
             best_acc = checkpoint['best_acc']
-        # optimizer.load_state_dict(checkpoint['optimizer'])
         print("=> loaded checkpoint '{}' (epoch {}) (bestacc {})".format(args.checkpoint, start_epoch, best_acc))
 
     model.cuda(args.gpu)

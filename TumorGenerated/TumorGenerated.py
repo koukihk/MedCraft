@@ -58,9 +58,11 @@ class TumorGenerated(RandomizableTransform, MapTransform):
 
         image_data_type = get_datatype(d['image_meta_dict']['datatype'][()])
         image_affine_matrix = d['image_meta_dict']['original_affine']
+        image_shape = d['image_meta_dict']['dim'][1:4]
 
         label_data_type = get_datatype(d['label_meta_dict']['datatype'][()])
         label_affine_matrix = d['label_meta_dict']['original_affine']
+        label_shape = d['label_meta_dict']['dim'][1:4]
 
         image = d['image'][0]
         label = d['label'][0]
@@ -75,12 +77,12 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         os.makedirs(label_outputs, exist_ok=True)
 
         nib.save(
-            nib.Nifti1Image(image.astype(image_data_type), image_affine_matrix, header=d['image_meta_dict']),
+            nib.Nifti1Image(image.astype(image_data_type), image_affine_matrix),
             os.path.join(image_outputs, f'synt_{image_filename}')
         )
 
         nib.save(
-            nib.Nifti1Image(label.astype(label_data_type), label_affine_matrix, header=d['label_meta_dict']),
+            nib.Nifti1Image(label.astype(label_data_type), label_affine_matrix),
             os.path.join(label_outputs, f'synt_{label_filename}')
         )
 
@@ -93,6 +95,6 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture, self.gmm_model)
             # print(tumor_type, d['image'].shape, np.max(d['label']))
-            if self.save_flag:
-                self.save_data(d, tumor_type)
+            # if self.save_flag:
+            #     self.save_data(d, tumor_type)
         return d

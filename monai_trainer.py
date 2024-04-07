@@ -16,7 +16,7 @@ import torch.multiprocessing as mp
 import torch.utils.data.distributed
 import scipy.ndimage as ndimage
 from monai.transforms import AsDiscrete,Activations,Compose
-
+import nibabel as nib
 import sys
 sys.path.append('../../pipextra/lib/python3.6/site-packages') #add missing packages
 
@@ -182,22 +182,68 @@ class AverageMeter(object):
 
 
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
+    def save_data(d):
+        def get_datatype(datatype):
+            data_type_map = {
+                2: 'uint8',
+                4: 'int16',
+                8: 'int32',
+                16: 'float32',
+                32: 'complex64',
+                64: 'float64'
+            }
+            return data_type_map.get(datatype.item(), 'uint8')
+
+        image_data_type = get_datatype(d['image_meta_dict']['datatype'])
+        image_affine_matrix = d['image_meta_dict']['original_affine'][0]
+        # image_shape = d['image_meta_dict']['dim'][0][1:4]
+
+        label_data_type = get_datatype(d['label_meta_dict']['datatype'])
+        label_affine_matrix = d['label_meta_dict']['original_affine'][0]
+        # label_shape = d['label_meta_dict']['dim'][0][1:4]
+
+        image = d['image'][0].squeeze(0).cpu().numpy()
+        label = d['label'][0].squeeze(0).cpu().numpy()
+
+        image_outputs = 'synt/global/image'
+        label_outputs = 'synt/global/label'
+
+        image_filename = os.path.basename(d['image_meta_dict']['filename_or_obj'][0]).split('/')[-1]
+        label_filename = os.path.basename(d['label_meta_dict']['filename_or_obj'][0]).split('/')[-1]
+
+        os.makedirs(image_outputs, exist_ok=True)
+        os.makedirs(label_outputs, exist_ok=True)
+
+        nib.save(
+            nib.Nifti1Image(image.astype(image_data_type), image_affine_matrix),
+            os.path.join(image_outputs, f'synt_{image_filename}')
+        )
+
+        nib.save(
+            nib.Nifti1Image(label.astype(label_data_type), label_affine_matrix),
+            os.path.join(label_outputs, f'synt_{label_filename}')
+        )
 
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
     run_acc = AverageMeter()
 
-
     for idx, batch_data in enumerate(loader):
 
         if isinstance(batch_data, list):
+            if args.gen:
+                continue
             data, target = batch_data
         else:
+            if args.gen:
+                save_data(batch_data)
+                # if idx <= 5:
+                #     print(batch_data)
+                continue
             data, target = batch_data['image'], batch_data['label']
 
         data, target = data.cuda(args.rank), target.cuda(args.rank)
-
 
         # optimizer.zero_grad()
         for param in model.parameters(): param.grad = None
@@ -214,27 +260,26 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
             loss.backward()
             optimizer.step()
 
-
         if args.distributed:
             loss_list = distributed_all_gather([loss], out_numpy=True, is_valid=idx < loader.sampler.valid_length)
-            run_loss.update(np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0), n=args.batch_size * args.world_size)
+            run_loss.update(np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0),
+                            n=args.batch_size * args.world_size)
 
         else:
-#             run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
+            #             run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
             run_loss.update(loss.item(), n=args.batch_size)
 
-
-        if args.rank==0:
+        if args.rank == 0:
             # print(not_nans)
             print('Epoch {}/{} {}/{}'.format(epoch, args.max_epochs, idx, len(loader)),
                   'loss: {:.4f}'.format(run_loss.avg),
-#                   'acc', run_acc.avg,
+                  #                   'acc', run_acc.avg,
                   'time {:.2f}s'.format(time.time() - start_time))
         start_time = time.time()
 
-    for param in model.parameters(): param.grad = None #just in case
+    for param in model.parameters(): param.grad = None  # just in case
 
-    return run_loss.avg#, run_acc.avg
+    return run_loss.avg  # , run_acc.avg
 
 def resample(img, target_size):
     imx, imy, imz = img.shape
@@ -258,7 +303,7 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
     run_loss = AverageMeter()
     run_acc = AverageMeter()
 
-    
+
     with torch.no_grad():
 
         for idx, batch_data in enumerate(loader):
@@ -276,17 +321,17 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                     logits = model_inferer(data) #another inferer (e.g. sliding window)
                 else:
                     logits = model(data)
-                    
+
             loss = loss_func(logits, target)
 
             logits = torch.softmax(logits, 1).cpu().numpy()
             logits = np.argmax(logits, axis = 1).astype(np.uint8)
             target = target.cpu().numpy()[:,0,:,:,:]
-            
-    
+
+
             name = batch_data["image_meta_dict"]['filename_or_obj'][0].split('/')[-1]
             val_shape = val_shape_dict[name]
-            
+
 
             pred = resample(logits[0], val_shape)
             y = resample(target[0], val_shape)
@@ -296,7 +341,7 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                 organ_Dice = dice(pred == i, y == i)
                 dice_list_sub.append(organ_Dice)
 
-            
+
             if args.distributed:
                 torch.distributed.barrier()
                 gather_list_sub = [[0]*len(dice_list_sub) for _ in range(dist.get_world_size())]
@@ -310,11 +355,11 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                 ave_all = np.mean(avg_classes)
 #                 if not loss.is_cuda:
                 loss = loss.cuda(args.rank)
-                
+
                 loss_list = distributed_all_gather([loss], out_numpy=True, is_valid=idx < loader.sampler.valid_length)
 
                 run_loss.update(np.mean(np.mean(np.stack(loss_list, axis=0), axis=0)), n=args.batch_size * args.world_size)
-                
+
                 run_acc.update(avg_classes, n=1)
 
             # If you do not use distributed, this program will raise error.
@@ -404,7 +449,7 @@ def run_training(model,
         if args.rank == 0:
             print('Final training  {}/{}'.format(epoch, args.max_epochs - 1), 'loss: {:.4f}'.format(train_loss),
                   'time {:.2f}s'.format(time.time() - epoch_time))
-            
+
         if args.rank==0 and writer is not None:
             writer.add_scalar('train_loss', train_loss, epoch)
 
