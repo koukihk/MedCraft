@@ -46,6 +46,7 @@ parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')
 parser.add_argument('--gen',action='store_true')
+parser.add_argument('--gmm',action='store_true')
 parser.add_argument('--optimal_components', default=3, type=int)
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
@@ -255,22 +256,27 @@ def _get_transform(args):
     if args.syn:
         tumor_prob = 0.9
         save_flag = False
+
     elif args.gen:
         tumor_prob = 1.0
         save_flag = True
     else:
         tumor_prob = 0.0
         save_flag = False
-    if args.syn or args.gen:
+
+    if args.gmm:
         start_time = time.time()
         optimal_components = args.optimal_components
         analyzer = TumorAnalyzer()
-        analyzer.load_data_and_fit_gmm('datafolds/04_LiTS', optimal_components)
+        analyzer.load_data_and_fit_gmm('datafolds/04_LiTS', optimal_components)  # here we use LiTS and you can modify it
         gmm_model = analyzer.get_gmm_model()
         end_time = time.time()
         duration = end_time - start_time
         print("GMM fixing execution time:", duration, "seconds")
+    else:
+        gmm_model = None
 
+    if args.syn or args.gen:
         train_transform = transforms.Compose(
             [
                 transforms.LoadImaged(keys=["image", "label"]),

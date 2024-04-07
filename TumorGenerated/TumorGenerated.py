@@ -75,12 +75,12 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         os.makedirs(label_outputs, exist_ok=True)
 
         nib.save(
-            nib.Nifti1Image(image.astype(image_data_type), image_affine_matrix),
+            nib.Nifti1Image(image.astype(image_data_type), image_affine_matrix, header=d['image_meta_dict']),
             os.path.join(image_outputs, f'synt_{image_filename}')
         )
 
         nib.save(
-            nib.Nifti1Image(label.astype(label_data_type), label_affine_matrix),
+            nib.Nifti1Image(label.astype(label_data_type), label_affine_matrix, header=d['label_meta_dict']),
             os.path.join(label_outputs, f'synt_{label_filename}')
         )
 
