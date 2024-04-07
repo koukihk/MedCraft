@@ -45,6 +45,7 @@ import argparse
 parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')
+parser.add_argument('--gen',action='store_true')
 parser.add_argument('--optimal_components', default=3, type=int)
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
@@ -252,6 +253,12 @@ def optuna_run(args):
 
 def _get_transform(args):
     if args.syn:
+        tumor_prob = 0.9
+    elif args.gen:
+        tumor_prob = 1.0
+    else:
+        tumor_prob = 0.0
+    if args.syn or args.gen:
         start_time = time.time()
         optimal_components = args.optimal_components
         analyzer = TumorAnalyzer()
@@ -267,7 +274,7 @@ def _get_transform(args):
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_model=gmm_model),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=tumor_prob, gmm_model=gmm_model),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
