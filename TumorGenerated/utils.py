@@ -98,7 +98,7 @@ def random_select(mask_scan):
     return potential_points
 
 
-def random_select_mod(mask_scan, gmm_model=None, max_attempts=600):
+def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
     if gmm_model is None:
         potential_points = random_select(mask_scan)
         return potential_points
@@ -108,11 +108,26 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=600):
         potential_points = gmm_model.sample(1)[0][0]
         potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_points)] == 1:
+            # Check if the point is not at the edge
+            if not is_edge_point(mask_scan, potential_points, edge_threshold=5):
+                return potential_points
             return potential_points
         loop_count += 1
 
     potential_points = random_select(mask_scan)
     return potential_points
+
+
+def is_edge_point(mask_scan, point, edge_threshold):
+    x, y, z = point
+    x_min, x_max = max(0, x - 1), min(mask_scan.shape[0] - 1, x + 1)
+    y_min, y_max = max(0, y - 1), min(mask_scan.shape[1] - 1, y + 1)
+    z_min, z_max = max(0, z - 1), min(mask_scan.shape[2] - 1, z + 1)
+
+    # Count non-liver pixels in the neighborhood
+    non_liver_count = np.sum(mask_scan[x_min:x_max + 1, y_min:y_max + 1, z_min:z_max + 1] == 0)
+    # If the count is below the threshold, it's considered as not an edge point
+    return non_liver_count <= edge_threshold
 
 
 # Step 2 : generate the ellipsoid
