@@ -249,7 +249,7 @@ def _get_transform(args):
         gmm_model = analyzer.get_gmm_model()
         end_time = time.time()
         duration = end_time - start_time
-        print("GMM fixing execution time:", duration, "seconds")
+        print("GMM fixing execution time: {:.2f} seconds".format(duration))
     else:
         gmm_model = None
 

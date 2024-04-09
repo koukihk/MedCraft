@@ -99,15 +99,10 @@ class TumorAnalyzer:
                     tumor_positions.append(center_of_mass)
 
             return tumor_positions
+
         except Exception as e:
             print("Error occurred while analyzing tumor location:", e)
             return []
-
-    def get_all_tumor_positions(self):
-        """
-        Returns all tumor positions.
-        """
-        return self.all_tumor_positions
 
     def get_gmm_model(self):
         """
