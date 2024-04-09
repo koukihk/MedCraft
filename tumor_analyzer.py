@@ -36,7 +36,7 @@ class TumorAnalyzer:
             return []
 
         label_data = nib.load(label_path).get_fdata()
-        positions = TumorAnalyzer.analyze_tumor_location(label_data, tumor_label=2)
+        positions = TumorAnalyzer.analyze_tumor_location(label_data, 1, 2)
 
         return positions
 
@@ -63,15 +63,26 @@ class TumorAnalyzer:
             self.has_fitted_gmm = True
 
     @staticmethod
-    def analyze_tumor_location(label_data, tumor_label=2):
+    def analyze_tumor_location(label_data, liver_label=1, tumor_label=2):
         """
         Analyzes tumor location from label data.
         """
-        labeled_components, num_components = ndimage.label(label_data == tumor_label)
+        # Find liver region
+        liver_mask = (label_data == liver_label)
+
+        # Find tumor region
+        tumor_mask = (label_data == tumor_label)
+
+        # Use liver region as a mask for tumor region
+        tumor_mask_in_liver = tumor_mask & liver_mask
+
+        # Label tumor components within liver region
+        labeled_tumors, num_tumors = ndimage.label(tumor_mask_in_liver)
+
         tumor_positions = []
 
-        for i in range(1, num_components + 1):
-            labeled_tumor = labeled_components == i
+        for i in range(1, num_tumors + 1):
+            labeled_tumor = labeled_tumors == i
             tumor_indices = np.transpose(np.nonzero(labeled_tumor))
             centroid = tuple(np.mean(tumor_indices, axis=0))
             tumor_positions.append(centroid)
