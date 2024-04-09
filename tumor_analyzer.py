@@ -17,77 +17,91 @@ class TumorAnalyzer:
         """
         Fits a Gaussian Mixture Model to the given data.
         """
-        self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='kmeans', tol=0.0001, max_iter=200)
-        self.gmm_model.fit(data)
+        try:
+            self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='kmeans', tol=0.0001, max_iter=200)
+            self.gmm_model.fit(data)
+        except Exception as e:
+            print("Error occurred while fitting GMM model:", e)
 
     @staticmethod
     def process_file(ct_file, data_folder, indices_to_skip):
-        if ct_file.startswith("._"):
+        try:
+            if ct_file.startswith("._"):
+                return []
+
+            img_path = os.path.join(data_folder, "img", ct_file)
+            label_path = os.path.join(data_folder, "label", ct_file)
+
+            file_index = int(ct_file.split('_')[1].split('.')[0])
+            if file_index in indices_to_skip:
+                return []
+
+            if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
+                return []
+
+            label = nib.load(label_path)
+            positions = TumorAnalyzer.analyze_tumor_location(label, 1, 2)
+
+            return positions
+        except Exception as e:
+            print("Error occurred while processing file", ct_file, ":", e)
             return []
-
-        img_path = os.path.join(data_folder, "img", ct_file)
-        label_path = os.path.join(data_folder, "label", ct_file)
-
-        file_index = int(ct_file.split('_')[1].split('.')[0])
-        if file_index in indices_to_skip:
-            return []
-
-        if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
-            return []
-
-        label_data = nib.load(label_path).get_fdata()
-        positions = TumorAnalyzer.analyze_tumor_location(label_data, 1, 2)
-
-        return positions
 
     def load_data(self, data_folder):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
-        ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
+        try:
+            ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
 
-        with Pool() as pool:
-            results = pool.starmap(TumorAnalyzer.process_file, [(ct_file, data_folder, self.indices_to_skip) for ct_file in ct_files])
+            with Pool() as pool:
+                results = pool.starmap(TumorAnalyzer.process_file, [(ct_file, data_folder, self.indices_to_skip) for ct_file in ct_files])
 
-        tumor_positions = [position for sublist in results for position in sublist]
+            tumor_positions = [position for sublist in results for position in sublist]
 
-        self.all_tumor_positions = np.array(tumor_positions)
+            self.all_tumor_positions = np.array(tumor_positions)
+        except Exception as e:
+            print("Error occurred while loading data:", e)
 
     def load_data_and_fit_gmm(self, data_folder, optimal_components):
         """
         Loads data and fits GMM model.
         """
         if not self.has_fitted_gmm:
-            self.load_data(data_folder)
-            self.fit_gmm_model(self.all_tumor_positions, optimal_components)
-            self.has_fitted_gmm = True
+            try:
+                self.load_data(data_folder)
+                self.fit_gmm_model(self.all_tumor_positions, optimal_components)
+                self.has_fitted_gmm = True
+            except Exception as e:
+                print("Error occurred while loading data and fitting GMM model:", e)
 
     @staticmethod
-    def analyze_tumor_location(label_data, liver_label=1, tumor_label=2):
+    def analyze_tumor_location(label, liver_label=1, tumor_label=2):
         """
         Analyzes tumor location from label data.
         """
-        # Find liver region
-        liver_mask = (label_data == liver_label)
+        try:
+            label_data = label.get_fdata()
 
-        # Find tumor region
-        tumor_mask = (label_data == tumor_label)
+            liver_mask = np.zeros_like(label_data).astype(np.int16)
+            tumor_mask = np.zeros_like(label_data).astype(np.int16)
+            liver_mask[label_data == liver_label] = 1
+            liver_mask[label_data == tumor_label] = 1
+            tumor_mask[label_data == tumor_label] = 1
 
-        # Use liver region as a mask for tumor region
-        tumor_mask_in_liver = tumor_mask & liver_mask
+            tumor_positions = []
 
-        # Label tumor components within liver region
-        labeled_tumors, num_tumors = ndimage.label(tumor_mask_in_liver)
+            if len(np.unique(tumor_mask)) > 1:
+                label_numeric, gt_N = ndimage.label(tumor_mask)
+                for segid in range(1, gt_N + 1):
+                    extracted_label_numeric = np.uint8(label_numeric == segid)
+                    center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
+                    tumor_positions.append(center_of_mass)
 
-        tumor_positions = []
-
-        for i in range(1, num_tumors + 1):
-            labeled_tumor = labeled_tumors == i
-            tumor_indices = np.transpose(np.nonzero(labeled_tumor))
-            centroid = tuple(np.mean(tumor_indices, axis=0))
-            tumor_positions.append(centroid)
-
-        return tumor_positions
+            return tumor_positions
+        except Exception as e:
+            print("Error occurred while analyzing tumor location:", e)
+            return []
 
     def get_all_tumor_positions(self):
         """
