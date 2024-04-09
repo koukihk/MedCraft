@@ -1,38 +1,26 @@
-import os
 import numpy as np
-import json, time
+import time
+import warnings
 from functools import partial
-import nibabel as nb
-import torch
-from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import GradScaler, autocast  # native AMP
-import torch.nn.parallel
-import torch.distributed as dist
-import torch.multiprocessing as mp
-import torch.utils.data.distributed
-import glob
-import subprocess
-
-import sys
-
 from os import environ
 
+import nibabel as nb
+import numpy as np
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import torch.nn.parallel
+import torch.utils.data.distributed
+from monai import transforms, data
+from monai.data import load_decathlon_datalist
 from monai.inferers import sliding_window_inference
 # from monai.data import DataLoader, Dataset
-from monai.losses import DiceLoss, DiceCELoss
-from monai.metrics import DiceMetric
-from monai.utils.enums import MetricReduction
-from monai.data import load_decathlon_datalist
-from monai.transforms import AsDiscrete, Activations, Compose
+from monai.losses import DiceCELoss
+from monai.transforms import AsDiscrete
 
-from monai import transforms, data
 from monai_trainer import AMDistributedSampler, run_training
-from datafolds.datafold_read import datafold_read
-from optimizers.lr_scheduler import WarmupCosineSchedule, LinearWarmupCosineAnnealingLR
-from networks.unetr import UNETR
-from networks.swin3d_unetr import SwinUNETR
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
-import warnings
+from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from tumor_analyzer import TumorAnalyzer
 
 warnings.filterwarnings("ignore")
@@ -44,9 +32,9 @@ import argparse
 
 parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
-parser.add_argument('--syn', action='store_true')
-parser.add_argument('--gen',action='store_true')
-parser.add_argument('--gmm',action='store_true')
+parser.add_argument('--syn', action='store_true')  # use synthetic tumors for training
+parser.add_argument('--gen',action='store_true')   # only for saving synthetic CT
+parser.add_argument('--gmm',action='store_true')   # use GMM for selecting tumor points
 parser.add_argument('--optimal_components', default=3, type=int)
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
