@@ -51,7 +51,7 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** | **0.51011** |    **0.54694**     | **0.55682** |    **0.58262**     |
 | **Tumor Nsd**  | **0.54203** |    **0.56692**     | **0.58413** |    **0.59475**     |
 
-#### Difftumor
+#### Difftumor(Semi-Supervised)
 
 |                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
 | :------------: | :--------------: | :------------: | :----------: |

@@ -253,16 +253,6 @@ def optuna_run(args):
 
 
 def _get_transform(args):
-    if args.syn:
-        tumor_prob = 0.9
-        save_flag = False
-
-    elif args.gen:
-        tumor_prob = 1.0
-        save_flag = True
-    else:
-        tumor_prob = 0.0
-        save_flag = False
 
     if args.gmm:
         start_time = time.time()
@@ -281,7 +271,7 @@ def _get_transform(args):
             [
                 transforms.LoadImaged(keys=["image", "label"]),
                 transforms.AddChanneld(keys=["image", "label"]),
-                TumorGenerated(keys=["image", "label"], prob=tumor_prob, save_flag=save_flag, gmm_model=gmm_model),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=1.0, gmm_model=gmm_model),  # here we use online
             ]
         )
     elif args.syn:
@@ -291,7 +281,7 @@ def _get_transform(args):
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=tumor_prob),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=0.9),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,

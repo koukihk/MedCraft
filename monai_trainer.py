@@ -205,8 +205,12 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         image = d['image'][0].squeeze(0).cpu().numpy()
         label = d['label'][0].squeeze(0).cpu().numpy()
 
-        image_outputs = 'synt/global/image'
-        label_outputs = 'synt/global/label'
+        folder = 'gobal'
+        if args.gmm:
+            folder = 'gmm'
+
+        image_outputs = f'synt/{folder}/image'
+        label_outputs = f'synt/{folder}/label'
 
         image_filename = os.path.basename(d['image_meta_dict']['filename_or_obj'][0]).split('/')[-1]
         label_filename = os.path.basename(d['label_meta_dict']['filename_or_obj'][0]).split('/')[-1]
