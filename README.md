@@ -1,11 +1,14 @@
 ### Perliminary
 
 This repository stores some of the code used for synthetic tumors and for the training and evaluation of segmentation models with associated results.
-In general, if not specifically labeled, during all model training, random patches of 96 × 96 × 96 were cropped from 3D image volumes during training. All models are trained for 4,000 epochs, and the base learning rate is 0.0002. The batch size is two per GPU. We adopt the linear warmup strategy and the cosine annealing learning rate schedule. For inference, we use the sliding window strategy by setting the overlapping area ratio to 0.75.
+
+In general, if not specifically labeled, during all model training, random patches of 96 × 96 × 96 were cropped from 3D image volumes during training. All models are trained for 4,000 epochs, and the base learning rate is 0.0002. The batch size is two per GPU. We adopt the linear warmup strategy and the cosine annealing learning rate schedule. For inference, I use the sliding window strategy by setting the overlapping area ratio to 0.75.
 
 ### Related Papers
 
 **Generative Enhancement for 3D Medical Images**  *Zhu, Lingting and Codella, Noel and Chen, Dongdong and Jin, Zhenchao and Yuan, Lu and Yu, Lequan* arXiv preprint arXiv:2403.12852 | 19 Mar 2024 [paper](https://arxiv.org/abs/2403.12852)
+
+**From Pixel to Cancer: Cellular Automata in Computed Tomography** *Yuxiang Lai, Xiaoxi Chen, Angtian Wang, Alan Yuille, and Zongwei Zhou* preprint  arXiv:2403.06459 | 11 Mar 2024 [paper](https://arxiv.org/abs/2403.06459)
 
 **Towards Generalizable Tumor Synthesis** *Qi Chen, Xiaoxi Chen, Haorui Song, Zhiwei Xiong, Alan Yuille, Chen Wei, Zongwei Zhou* CVPR | 29 Feb 2024 [paper](https://arxiv.org/pdf/2402.19470.pdf)
 
@@ -76,12 +79,12 @@ In general, if not specifically labeled, during all model training, random patch
 
 #### Manual method modification
 
-|                | UNET(GMM) | UNET(GMM,Global) | UNET(+5% Sphere) | UNET(+10% Sphere) | UNET(+12% Sphere) | UNET(+15% Sphere) | UNET(+17% Sphere) | UNET(+25% Sphere) | Zhang et al. |
-| :------------: | :-------: | :--------------: | :--------------: | :---------------: | :---------------: | :---------------: | :---------------: | :---------------: | :----------: |
-| **Liver Dice** |           |                  |   **0.96086**    |    **0.96161**    |    **0.96114**    |    **0.96185**    |    **0.96171**    |    **0.95622**    | **0.95761**  |
-| **Liver Nsd**  |           |                  |   **0.88020**    |    **0.88341**    |    **0.87753**    |    **0.87860**    |    **0.87605**    |    **0.85615**    | **0.86665**  |
-| **Tumor Dice** |           |                  |   **0.55767**    |    **0.56752**    |    **0.53391**    |    **0.58081**    |    **0.54269**    |    **0.45940**    | **0.51179**  |
-| **Tumor Nsd**  |           |                  |   **0.60392**    |    **0.61096**    |    **0.56607**    |    **0.62556**    |    **0.55893**    |    **0.45606**    | **0.54367**  |
+|                | UNET(GMM) | UNET(GMM,Global) | UNET(+15% Sphere) |
+| :------------: | :-------: | :--------------: | :---------------: |
+| **Liver Dice** |           |                  |    **0.96185**    |
+| **Liver Nsd**  |           |                  |    **0.87860**    |
+| **Tumor Dice** |           |                  |    **0.58081**    |
+| **Tumor Nsd**  |           |                  |    **0.62556**    |
 
 ### AI model trained by real tumors for comparison(Self)
 
