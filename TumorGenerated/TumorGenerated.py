@@ -13,7 +13,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
     def __init__(self,
                  keys: KeysCollection,
                  prob: float = 0.1,
-                 tumor_prob=[0.2, 0.2, 0.2, 0.2, 0.2],
+                 tumor_prob=[0.3, 0.25, 0.2, 0.15, 0.1],
                  allow_missing_keys: bool = False,
                  gmm_model=None
                  ) -> None:

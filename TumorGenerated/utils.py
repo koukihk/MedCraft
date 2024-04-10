@@ -124,10 +124,9 @@ def is_edge_point(mask_scan, point, edge_threshold):
     y_min, y_max = max(0, y - 1), min(mask_scan.shape[1] - 1, y + 1)
     z_min, z_max = max(0, z - 1), min(mask_scan.shape[2] - 1, z + 1)
 
-    # Count non-liver pixels in the neighborhood
-    non_liver_count = np.sum(mask_scan[x_min:x_max + 1, y_min:y_max + 1, z_min:z_max + 1] == 0)
-    # If the count is below the threshold, it's considered as not an edge point
-    return non_liver_count <= edge_threshold
+    liver_count = np.sum(mask_scan[x_min:x_max + 1, y_min:y_max + 1, z_min:z_max + 1] == 1)
+
+    return liver_count < edge_threshold
 
 
 # Step 2 : generate the ellipsoid
