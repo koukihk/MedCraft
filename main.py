@@ -249,7 +249,7 @@ def _get_transform(args):
         gmm_model = analyzer.get_gmm_model()
         end_time = time.time()
         duration = end_time - start_time
-        print("GMM fixing execution time: {:.2f} seconds".format(duration))
+        print("GMM fixing execution time: {:.2f} s".format(duration))
     else:
         gmm_model = None
 
@@ -258,6 +258,8 @@ def _get_transform(args):
             [
                 transforms.LoadImaged(keys=["image", "label"]),
                 transforms.AddChanneld(keys=["image", "label"]),
+                transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
+                transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=1.0, gmm_model=gmm_model),  # here we use online
             ]
         )
