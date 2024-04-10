@@ -1,23 +1,22 @@
-import os
-import time
-import shutil
 import json
+import os
+import shutil
+import sys
+import time
+
 # import tempfile
 # import matplotlib.pyplot as plt
 import numpy as np
+import scipy.ndimage as ndimage
 # import json
 import torch
-from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import GradScaler, autocast #native AMP
-import torch.nn.parallel
 import torch.distributed as dist
-import torch.nn.functional as F
-import torch.multiprocessing as mp
+import torch.nn.parallel
 import torch.utils.data.distributed
-import scipy.ndimage as ndimage
-from monai.transforms import AsDiscrete,Activations,Compose
-import nibabel as nib
-import sys
+from torch.cuda.amp import GradScaler, autocast  # native AMP
+from torch.utils.tensorboard import SummaryWriter
+from tumor_saver import TumorSaver
+
 sys.path.append('../../pipextra/lib/python3.6/site-packages') #add missing packages
 
 
@@ -182,56 +181,15 @@ class AverageMeter(object):
 
 
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
-    def save_data(d):
-        def get_datatype(datatype):
-            data_type_map = {
-                2: 'uint8',
-                4: 'int16',
-                8: 'int32',
-                16: 'float32',
-                32: 'complex64',
-                64: 'float64'
-            }
-            return data_type_map.get(datatype.item(), 'uint8')
-
-        image_data_type = get_datatype(d['image_meta_dict']['datatype'])
-        image_affine_matrix = d['image_meta_dict']['original_affine'][0]
-        # image_shape = d['image_meta_dict']['dim'][0][1:4]
-
-        label_data_type = get_datatype(d['label_meta_dict']['datatype'])
-        label_affine_matrix = d['label_meta_dict']['original_affine'][0]
-        # label_shape = d['label_meta_dict']['dim'][0][1:4]
-
-        image = d['image'][0].squeeze(0).cpu().numpy()
-        label = d['label'][0].squeeze(0).cpu().numpy()
-
-        folder = 'gobal'
-        if args.gmm:
-            folder = 'gmm'
-
-        image_outputs = f'synt/{folder}/image'
-        label_outputs = f'synt/{folder}/label'
-
-        image_filename = os.path.basename(d['image_meta_dict']['filename_or_obj'][0]).split('/')[-1]
-        label_filename = os.path.basename(d['label_meta_dict']['filename_or_obj'][0]).split('/')[-1]
-
-        os.makedirs(image_outputs, exist_ok=True)
-        os.makedirs(label_outputs, exist_ok=True)
-
-        nib.save(
-            nib.Nifti1Image(image.astype(image_data_type), image_affine_matrix),
-            os.path.join(image_outputs, f'synt_{image_filename}')
-        )
-
-        nib.save(
-            nib.Nifti1Image(label.astype(label_data_type), label_affine_matrix),
-            os.path.join(label_outputs, f'synt_{label_filename}')
-        )
 
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
     run_acc = AverageMeter()
+
+    folder='global'
+    if args.gmm:
+        folder = 'gmm'
 
     for idx, batch_data in enumerate(loader):
 
@@ -241,7 +199,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
             data, target = batch_data
         else:
             if args.gen:
-                save_data(batch_data)
+                TumorSaver.save_data(batch_data, folder)
                 # if idx <= 5:
                 #     print(batch_data)
                 continue
@@ -436,6 +394,7 @@ def run_training(model,
     scaler = None
     if args.amp:  # new native amp
         scaler = GradScaler()
+
 
     val_acc_max = 0.
 
