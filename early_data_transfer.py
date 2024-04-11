@@ -72,14 +72,14 @@ def filter_liver_early_tumor(data_dir='/mnt/ccvl15/zzhou82/PublicAbdominalData/0
 
 
 if __name__ == '__main__':
-    data_dir = '/share/home/ncu22/SyntheticTumors/synt/global/label'
-    tumor_save_dir = '/share/home/ncu22/SyntheticTumors/synt/global/early_tumor_label/'
+    data_dir = '/share/home/ncu22/SyntheticTumors/synt/normal/label'
+    tumor_save_dir = '/share/home/ncu22/SyntheticTumors/synt/normal/early_tumor_label/'
     os.makedirs(tumor_save_dir, exist_ok=True)
     filter_liver_early_tumor(data_dir, tumor_save_dir)
 
     file_list = glob.glob(tumor_save_dir + '/*')
     file_list.sort()
-    f = open("/share/home/ncu22/SyntheticTumors/synt/global/early_tumor_label/early_valid_names.txt", "w")
+    f = open("/share/home/ncu22/SyntheticTumors/synt/normal/early_tumor_label/early_valid_names.txt", "w")
     for label_path in file_list:
         name = os.path.basename(label_path)
         label_array = nib.load(label_path)

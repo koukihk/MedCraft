@@ -187,7 +187,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     run_loss = AverageMeter()
     run_acc = AverageMeter()
 
-    folder='global'
+    folder='normal'
     if args.gmm:
         folder = 'gmm'
 

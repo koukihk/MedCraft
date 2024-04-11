@@ -40,7 +40,7 @@ class TumorSaver:
         print(f"Saved {full_path}")
 
     @staticmethod
-    def save_data(d, folder='global'):
+    def save_data(d, folder='normal'):
         image_data_type = TumorSaver.get_datatype(d['image_meta_dict']['datatype'])
         image_affine_matrix = d['image_meta_dict']['original_affine'][0]
 
