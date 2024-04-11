@@ -63,19 +63,14 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** |   **0.69001**    |  **0.68217**   | **0.75031**  |
 | **Tumor Nsd**  |   **0.69970**    |  **0.74257**   | **0.77798**  |
 
-|                | nnUNet(Chen‘s Val) | nnUNet(Hu's Val) | nnUNet(Global) |
-| :------------: | :----------------: | :--------------: | :------------: |
-| **Liver Dice** |                    |                  |                |
-| **Liver Nsd**  |                    |                  |                |
-| **Tumor Dice** |                    |                  |                |
-| **Tumor Nsd**  |                    |                  |                |
+#### Difftumor(Unsupervised)
 
-|                | SwinUNETR(Chen‘s Val) | SwinUNETR(Hu's Val) | SwinUNETR(Global) |
-| :------------: | :-------------------: | :-----------------: | :---------------: |
-| **Liver Dice** |                       |                     |                   |
-| **Liver Nsd**  |                       |                     |                   |
-| **Tumor Dice** |                       |                     |                   |
-| **Tumor Nsd**  |                       |                     |                   |
+|                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
+| :------------: | :--------------: | :------------: | :----------: |
+| **Liver Dice** |                  |                |              |
+| **Liver Nsd**  |                  |                |              |
+| **Tumor Dice** |                  |                |              |
+| **Tumor Nsd**  |                  |                |              |
 
 #### Manual method modification
 

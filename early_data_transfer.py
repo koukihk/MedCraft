@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     file_list = glob.glob(tumor_save_dir + '/*')
     file_list.sort()
-    f = open("/share/home/ncu22/SyntheticTumors/synt/global/early_tumor_label/valid_names.txt", "w")
+    f = open("/share/home/ncu22/SyntheticTumors/synt/global/early_tumor_label/early_valid_names.txt", "w")
     for label_path in file_list:
         name = os.path.basename(label_path)
         label_array = nib.load(label_path)

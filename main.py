@@ -258,8 +258,6 @@ def _get_transform(args):
             [
                 transforms.LoadImaged(keys=["image", "label"]),
                 transforms.AddChanneld(keys=["image", "label"]),
-                transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
-                transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=1.0, gmm_model=gmm_model),  # here we use online
             ]
         )
