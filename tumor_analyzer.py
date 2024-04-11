@@ -1,9 +1,12 @@
 import os
-import numpy as np
-from sklearn.mixture import GaussianMixture
-from scipy import ndimage
-import nibabel as nib
 from multiprocessing import Pool
+
+import nibabel as nib
+import numpy as np
+from scipy import ndimage
+from scipy.ndimage import label
+from scipy.optimize import least_squares
+from sklearn.mixture import GaussianMixture
 
 
 class TumorAnalyzer:
@@ -75,6 +78,7 @@ class TumorAnalyzer:
             except Exception as e:
                 print("Error occurred while loading data and fitting GMM model:", e)
 
+
     @staticmethod
     def analyze_tumor_location(label, liver_label=1, tumor_label=2):
         """
@@ -95,8 +99,28 @@ class TumorAnalyzer:
                 label_numeric, gt_N = ndimage.label(tumor_mask)
                 for segid in range(1, gt_N + 1):
                     extracted_label_numeric = np.uint8(label_numeric == segid)
-                    center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                    tumor_positions.append(center_of_mass)
+                    clot_size = np.sum(extracted_label_numeric)
+                    if clot_size < 8:
+                        continue
+                    # center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
+                    # Get coordinates of tumor voxels
+                    x, y, z = np.where(extracted_label_numeric)
+
+                    # Initial guess for the parameters of the ellipsoid (center and radii)
+                    initial_guess = [np.mean(x), np.mean(y), np.mean(z), 1, 1, 1]
+
+                    # Residual function to minimize
+                    def residual(params):
+                        cx, cy, cz, a, b, c = params
+                        distances = np.sqrt(((x - cx) / a)**2 + ((y - cy) / b)**2 + ((z - cz) / c)**2) - 1
+                        return distances
+
+                    # Fit ellipsoid parameters
+                    result = least_squares(residual, initial_guess)
+
+                    # Extract center of the ellipsoid (which represents tumor position)
+                    tumor_position = result.x[:3]
+                    tumor_positions.append(tuple(tumor_position))
 
             return tumor_positions
 
