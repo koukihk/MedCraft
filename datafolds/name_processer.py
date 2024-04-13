@@ -65,14 +65,19 @@ def main():
     val_labelnames = labelnames[train_count:train_count+val_count]
 
     # 写入训练集文件
-    with open(f'/share/home/ncu22/DiffTumor/STEP2.DiffusionModel/cross_eval/liver_tumor_data_{label_type}_fold/real_tumor_train_{args.txt_id}.txt', 'w') as train_file:
+    with open(
+            f'/share/home/ncu22/DiffTumor/STEP2.DiffusionModel/cross_eval/liver_tumor_data_{label_type}_fold/real_tumor_train_{args.txt_id}.txt',
+            'w') as train_file:
         for img, label in zip(train_imagenames, train_labelnames):
             train_file.write(f'{img}\t\t{label}\n')
 
     # 写入验证集文件
-    with open(f'/share/home/ncu22/DiffTumor/STEP2.DiffusionModel/cross_eval/liver_tumor_data_{label_type}_fold/real_tumor_val_{args.txt_id}.txt', 'w') as val_file:
+    with open(
+            f'/share/home/ncu22/DiffTumor/STEP2.DiffusionModel/cross_eval/liver_tumor_data_{label_type}_fold/real_tumor_val_{args.txt_id}.txt',
+            'w') as val_file:
         for img, label in zip(val_imagenames, val_labelnames):
             val_file.write(f'{img}\t\t{label}\n')
+
 
 if __name__ == "__main__":
     main()
