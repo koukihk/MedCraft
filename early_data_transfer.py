@@ -77,6 +77,12 @@ def filter_liver_early_tumor(data_dir='/mnt/ccvl15/zzhou82/PublicAbdominalData/0
 
 def main():
     args = parser.parse_args()
+
+    print("MAIN Argument values:")
+    for k, v in vars(args).items():
+        print(k, '=>', v)
+    print('-----------------')
+
     data_dir = f'/share/home/ncu22/SyntheticTumors/synt/{args.gen_folder}/label'
     tumor_save_dir = f'/share/home/ncu22/SyntheticTumors/synt/{args.gen_folder}/early_tumor_label/'
     os.makedirs(tumor_save_dir, exist_ok=True)
