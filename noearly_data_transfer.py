@@ -9,6 +9,11 @@ import h5py
 from scipy import ndimage
 import glob
 
+import argparse
+
+parser = argparse.ArgumentParser(description='brats21 segmentation testing')
+
+parser.add_argument('--gen_folder', default='normal')
 
 def readh5(filename, dataset=None):
     fid = h5py.File(filename, 'r')
@@ -26,8 +31,8 @@ def pixel2voxel(A, res=[0.75, 0.75, 0.5]):
     return np.array(A) * (res[0] * res[1] * res[2])
 
 
-def filter_liver_non_early_tumor(data_dir='/mnt/ccvl15/zzhou82/PublicAbdominalData/04_LiTS/04_LiTS/label/',
-                                 tumor_save_dir='04_LiTS/early_tumor_label/'):
+def filter_liver_noearly_tumor(data_dir='/mnt/ccvl15/zzhou82/PublicAbdominalData/04_LiTS/04_LiTS/label/',
+                               tumor_save_dir='04_LiTS/early_tumor_label/'):
     total_clot_size = []
     total_clot_size_mmR = []
     valid_ct_name = []
@@ -70,16 +75,16 @@ def filter_liver_non_early_tumor(data_dir='/mnt/ccvl15/zzhou82/PublicAbdominalDa
                         valid_ct_name.append(file_name)
         nib.save(nib.Nifti1Image(organ_mask.astype(np.uint8), original_affine), save_path)
 
-
-if __name__ == '__main__':
-    data_dir = '/share/home/ncu22/SyntheticTumors/synt/normal/label'
-    tumor_save_dir = '/share/home/ncu22/SyntheticTumors/synt/normal/noearly_tumor_label/'
+def main():
+    args = parser.parse_args()
+    data_dir = f'/share/home/ncu22/SyntheticTumors/synt/{args.gen_folder}/label'
+    tumor_save_dir = f'/share/home/ncu22/SyntheticTumors/synt/{args.gen_folder}/noearly_tumor_label/'
     os.makedirs(tumor_save_dir, exist_ok=True)
-    filter_liver_non_early_tumor(data_dir, tumor_save_dir)
+    filter_liver_noearly_tumor(data_dir, tumor_save_dir)
 
     file_list = glob.glob(tumor_save_dir + '/*')
     file_list.sort()
-    f = open("/share/home/ncu22/SyntheticTumors/synt/normal/noearly_tumor_label/noearly_valid_names.txt", "w")
+    f = open(f"/share/home/ncu22/SyntheticTumors/synt/{args.gen_folder}/noearly_tumor_label/noearly_valid_names.txt", "w")
     for label_path in file_list:
         name = os.path.basename(label_path)
         label_array = nib.load(label_path)
@@ -89,4 +94,8 @@ if __name__ == '__main__':
             f.write('\n')
             print('name', tumor_save_dir + name)
     f.close()
+
+
+if __name__ == '__main__':
+    main()
 

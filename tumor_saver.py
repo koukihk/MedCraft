@@ -24,12 +24,16 @@ class TumorSaver:
 
         if os.path.exists(full_path):
             counter = 1
-            while os.path.exists(os.path.join(output_path, filename)):
-                filename, _ = os.path.splitext(filename)
-                filename, _ = os.path.splitext(filename)
-                filename = f"{filename}_{counter}"
+            filename, _ = os.path.splitext(filename)
+            filename, _ = os.path.splitext(filename)
+            final_filename = f"{filename}_{counter}"
+            final_filename += '.nii.gz'
+            while os.path.exists(os.path.join(output_path, final_filename)):
                 counter += 1
+                final_filename = f"{filename}_{counter}"
+                final_filename += '.nii.gz'
 
+            filename = f"{filename}_{counter}"
             filename += '.nii.gz'
             full_path = os.path.join(output_path, filename)
 

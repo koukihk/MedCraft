@@ -187,9 +187,9 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     run_loss = AverageMeter()
     run_acc = AverageMeter()
 
-    folder='normal'
+    folder = args.gen_folder
     if args.gmm:
-        folder = 'gmm'
+        folder = 'gmm' + folder
 
     for idx, batch_data in enumerate(loader):
 
