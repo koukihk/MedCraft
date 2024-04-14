@@ -14,7 +14,7 @@ class TumorAnalyzer:
         self.all_tumor_positions = None
         self.gmm_model = None
         self.has_fitted_gmm = False
-        self.indices_to_skip = [32, 34, 38, 41, 47, 89, 91, 105, 106, 114, 115]
+        self.indices_to_skip = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
 
     def fit_gmm_model(self, data, optimal_components):
         """

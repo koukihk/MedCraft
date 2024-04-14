@@ -106,7 +106,7 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
     loop_count = 0
     while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
-        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
+        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(np.int16)
         if mask_scan[tuple(potential_points)] == 1:
             # Check if the point is not at the edge
             if not is_edge_point(mask_scan, potential_points, edge_threshold=5):
