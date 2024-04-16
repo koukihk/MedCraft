@@ -4,7 +4,6 @@ from multiprocessing import Pool
 import nibabel as nib
 import numpy as np
 from scipy import ndimage
-from scipy.ndimage import label
 from scipy.optimize import least_squares
 from sklearn.mixture import GaussianMixture
 
