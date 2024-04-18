@@ -246,7 +246,7 @@ def _get_transform(args):
         start_time = time.time()
         optimal_components = args.optimal_components
         analyzer = TumorAnalyzer()
-        analyzer.load_data_and_fit_gmm('datafolds/04_LiTS', optimal_components)  # here we use LiTS and you can modify it
+        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42)  # here we use LiTS and you can modify it
         gmm_model = analyzer.get_gmm_model()
         end_time = time.time()
         duration = end_time - start_time

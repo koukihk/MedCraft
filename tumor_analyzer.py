@@ -1,6 +1,6 @@
 import os
 from multiprocessing import Pool
-
+from sklearn.model_selection import train_test_split
 import nibabel as nib
 import numpy as np
 from scipy import ndimage
@@ -12,21 +12,35 @@ class TumorAnalyzer:
     def __init__(self):
         self.all_tumor_positions = None
         self.gmm_model = None
-        self.has_fitted_gmm = False
-        self.indices_to_skip = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
+        self.gmm_flag = False
+        self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
 
-    def fit_gmm_model(self, data, optimal_components):
+    def fit_gmm_model(self, train_data, val_data, optimal_components, max_iter=150):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
         try:
-            self.gmm_model = GaussianMixture(n_components=optimal_components, covariance_type='full', init_params='kmeans', tol=0.0001, max_iter=200)
-            self.gmm_model.fit(data)
+            self.gmm_model = GaussianMixture(
+                n_components=optimal_components,
+                covariance_type='full',
+                init_params='kmeans',
+                tol=0.00005,
+                max_iter=max_iter
+            )
+
+            prev_score = float('-inf')
+            for iter in range(max_iter):
+                self.gmm_model.fit(train_data)
+                val_score = self.gmm_model.score(val_data)
+                if val_score < prev_score:
+                    print("Validation score decreased. Stopping early.")
+                    break
+                prev_score = val_score
         except Exception as e:
             print("Error occurred while fitting GMM model:", e)
 
     @staticmethod
-    def process_file(ct_file, data_folder, indices_to_skip):
+    def process_file(ct_file, data_folder, healthy_ct):
         try:
             if ct_file.startswith("._"):
                 return []
@@ -34,8 +48,8 @@ class TumorAnalyzer:
             img_path = os.path.join(data_folder, "img", ct_file)
             label_path = os.path.join(data_folder, "label", ct_file)
 
-            file_index = int(ct_file.split('_')[1].split('.')[0])
-            if file_index in indices_to_skip:
+            ct_index = int(ct_file.split('_')[1].split('.')[0])
+            if ct_index in healthy_ct:
                 return []
 
             if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
@@ -57,7 +71,7 @@ class TumorAnalyzer:
             ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
 
             with Pool() as pool:
-                results = pool.starmap(TumorAnalyzer.process_file, [(ct_file, data_folder, self.indices_to_skip) for ct_file in ct_files])
+                results = pool.starmap(TumorAnalyzer.process_file, [(ct_file, data_folder, self.healthy_ct) for ct_file in ct_files])
 
             tumor_positions = [position for sublist in results for position in sublist]
 
@@ -65,15 +79,23 @@ class TumorAnalyzer:
         except Exception as e:
             print("Error occurred while loading data:", e)
 
-    def load_data_and_fit_gmm(self, data_folder, optimal_components):
+    def split_train_val(self, test_size=0.2, random_state=42):
         """
-        Loads data and fits GMM model.
+        Splits the tumor positions into training and validation sets.
         """
-        if not self.has_fitted_gmm:
+        train_data, val_data = train_test_split(self.all_tumor_positions, test_size=test_size, random_state=random_state)
+        return train_data, val_data
+
+    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42):
+        """
+        Loads data, prepares training and validation sets, and fits GMM model with early stopping.
+        """
+        if not self.gmm_flag:
             try:
                 self.load_data(data_folder)
-                self.fit_gmm_model(self.all_tumor_positions, optimal_components)
-                self.has_fitted_gmm = True
+                train_data, val_data = self.split_train_val(test_size=test_size, random_state=random_state)
+                self.fit_gmm_model(train_data, val_data, optimal_components, 150)
+                self.gmm_flag = True
             except Exception as e:
                 print("Error occurred while loading data and fitting GMM model:", e)
 

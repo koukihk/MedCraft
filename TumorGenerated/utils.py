@@ -1,11 +1,10 @@
 ### Tumor Generateion
 import random
-import time
+
 import cv2
 import elasticdeform
 import numpy as np
 from scipy.ndimage import gaussian_filter
-
 
 def generate_prob_function(mask_shape):
     sigma = np.random.uniform(3, 15)
@@ -106,10 +105,13 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
     loop_count = 0
     while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
-        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
+        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(np.int16)
         if mask_scan[tuple(potential_points)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_points, edge_threshold=5):
+            liver_mask = np.zeros_like(mask_scan, dtype=np.int16)
+            liver_mask[mask_scan == 1] = 1
+            liver_mask[mask_scan == 2] = 1
+            if not is_edge_point(liver_mask, potential_points):
                 return potential_points
             return potential_points
         loop_count += 1
@@ -118,15 +120,16 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
     return potential_points
 
 
-def is_edge_point(mask_scan, point, edge_threshold):
+def is_edge_point(liver_mask, point):
+    kernel = np.ones((5, 5, 5), np.uint8)
+
+    liver_edges = cv2.erode(liver_mask.astype(np.uint8), kernel, iterations=1)
+
     x, y, z = point
-    x_min, x_max = max(0, x - 1), min(mask_scan.shape[0] - 1, x + 1)
-    y_min, y_max = max(0, y - 1), min(mask_scan.shape[1] - 1, y + 1)
-    z_min, z_max = max(0, z - 1), min(mask_scan.shape[2] - 1, z + 1)
-
-    liver_count = np.sum(mask_scan[x_min:x_max + 1, y_min:y_max + 1, z_min:z_max + 1] == 1)
-
-    return liver_count < edge_threshold
+    if liver_edges[x, y, z] == 0:
+        return True
+    else:
+        return False
 
 
 # Step 2 : generate the ellipsoid
