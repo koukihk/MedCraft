@@ -23,7 +23,7 @@ class TumorAnalyzer:
             self.gmm_model = GaussianMixture(
                 n_components=optimal_components,
                 covariance_type='full',
-                init_params='kmeans',
+                init_params='k-means++',
                 tol=0.00005,
                 max_iter=max_iter
             )
