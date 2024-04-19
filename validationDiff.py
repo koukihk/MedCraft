@@ -227,6 +227,7 @@ def _get_loader(args):
         # AsDiscreted(keys="pred", argmax=True, to_onehot=3),
         AsDiscreted(keys="pred", argmax=True, to_onehot=3),
         AsDiscreted(keys="label", to_onehot=3),
+        AsDiscreted(keys="organ_pseudo", to_onehot=3),
         # SaveImaged(keys="pred", meta_keys="pred_meta_dict", output_dir=output_dir, output_postfix="seg", resample=False,output_dtype=np.uint8,separate_folder=False),
     ])
 
