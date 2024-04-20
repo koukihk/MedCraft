@@ -24,10 +24,24 @@ import argparse
 
 parser = argparse.ArgumentParser(description='liver tumor validation')
 
-# file dir
+parser.add_argument('--val_mode', default='json', type=str)
+
+# parameters for txt mode
+parser.add_argument('--data_root', default=None, type=str)
+parser.add_argument('--datafold_dir', default=None, type=str)
+
+parser.add_argument('--spec_flag', action='store_true')
+parser.add_argument('--spec_file', default='lits_all_diff.txt', type=str)
+
+parser.add_argument('--tumor_type', default='early', type=str)
+parser.add_argument('--organ_type', default='liver', type=str)
+parser.add_argument('--fold', default=0, type=int)
+
+# parameters for json mode
 parser.add_argument('--val_dir', default=None, type=str)
 parser.add_argument('--json_dir', default=None, type=str)
 
+# common parameters
 parser.add_argument('--save_dir', default='out', type=str)
 parser.add_argument('--checkpoint', action='store_true')
 
@@ -204,22 +218,63 @@ class AddOrganPseudo(Transform):
 
 
 def _get_loader(args):
-    val_data_dir = args.val_dir
-    datalist_json = args.json_dir
-    val_org_transform = transforms.Compose(
-        [
-            AddOrganPseudo(),
-            transforms.LoadImaged(keys=["image", "label", "organ_pseudo"]),
-            transforms.AddChanneld(keys=["image", "label", "organ_pseudo"]),
-            transforms.Orientationd(keys=["image"], axcodes="RAS"),
-            transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
-            transforms.ScaleIntensityRanged(keys=["image"], a_min=-175, a_max=250, b_min=0.0, b_max=1.0, clip=True),
-            transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
-            transforms.ToTensord(keys=["image", "label", "organ_pseudo"]),
-        ]
-    )
-    val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
-    val_org_ds = data.Dataset(val_files, transform=val_org_transform)
+    val_org_transform = None
+    val_org_ds = None
+
+    if args.val_mode == 'json':
+        print('json mode')
+        val_data_dir = args.val_dir
+        datalist_json = args.json_dir
+        val_org_transform = transforms.Compose(
+            [
+                AddOrganPseudo(),
+                transforms.LoadImaged(keys=["image", "label", "organ_pseudo"]),
+                transforms.AddChanneld(keys=["image", "label", "organ_pseudo"]),
+                transforms.Orientationd(keys=["image"], axcodes="RAS"),
+                transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
+                transforms.ScaleIntensityRanged(keys=["image"], a_min=-175, a_max=250, b_min=0.0, b_max=1.0, clip=True),
+                transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
+                transforms.ToTensord(keys=["image", "label", "organ_pseudo"]),
+            ]
+        )
+        val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
+        val_org_ds = data.Dataset(val_files, transform=val_org_transform)
+
+    elif args.val_mode == 'txt':
+        print('txt mode')
+        val_org_transform = transforms.Compose(
+            [
+                transforms.LoadImaged(keys=["image", "label", "organ_pseudo"]),
+                transforms.AddChanneld(keys=["image", "label", "organ_pseudo"]),
+                transforms.Orientationd(keys=["image"], axcodes="RAS"),
+                transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
+                transforms.ScaleIntensityRanged(keys=["image"], a_min=-175, a_max=250, b_min=0.0, b_max=1.0, clip=True),
+                transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
+                transforms.ToTensord(keys=["image", "label", "organ_pseudo"]),
+            ]
+        )
+        val_img = []
+        val_lbl = []
+        val_name = []
+        val_pseudo_lbl = []
+
+        val_file = 'real_{}_val_{}.txt'.format(args.tumor_type, args.fold)
+        if args.spec_flag:
+            val_file = args.spec_file
+
+        for line in open(os.path.join(args.datafold_dir, val_file)):
+            name = line.strip().split()[1].split('.')[0]
+            val_img.append(args.data_root + line.strip().split()[0])
+            val_lbl.append(args.data_root + line.strip().split()[1])
+            val_pseudo_lbl.append(
+                'organ_pseudo_swin_new/' + args.organ_type + '/' + os.path.basename(line.strip().split()[1]))
+            val_name.append(name)
+        data_dicts_val = [{'image': image, 'label': label, 'organ_pseudo': organ_pseudo, 'name': name}
+                          for image, label, organ_pseudo, name in zip(val_img, val_lbl, val_pseudo_lbl, val_name)]
+        print('val len {}'.format(len(data_dicts_val)))
+
+        val_org_ds = data.Dataset(data_dicts_val, transform=val_org_transform)
+
     val_org_loader = data.DataLoader(val_org_ds, batch_size=1, shuffle=False, num_workers=4, sampler=None,
                                      pin_memory=True)
 
