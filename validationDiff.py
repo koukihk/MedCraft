@@ -216,13 +216,12 @@ class AddOrganPseudo(Transform):
         data["organ_pseudo"] = organ_pseudo
         return data
 
-
 def _get_loader(args):
     val_org_transform = None
     val_org_ds = None
 
-    if args.val_mode == 'json':
-        print('json mode')
+    if args.val_mode == 'json_pseudo':
+        print('Use json_pseudo mode')
         val_data_dir = args.val_dir
         datalist_json = args.json_dir
         val_org_transform = transforms.Compose(
@@ -240,8 +239,26 @@ def _get_loader(args):
         val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
         val_org_ds = data.Dataset(val_files, transform=val_org_transform)
 
+    elif args.val_mode == 'json':
+        print('Use json mode')
+        val_data_dir = args.val_dir
+        datalist_json = args.json_dir
+        val_org_transform = transforms.Compose(
+            [
+                transforms.LoadImaged(keys=["image", "label"]),
+                transforms.AddChanneld(keys=["image", "label"]),
+                transforms.Orientationd(keys=["image"], axcodes="RAS"),
+                transforms.Spacingd(keys=["image"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear")),
+                transforms.ScaleIntensityRanged(keys=["image"], a_min=-175, a_max=250, b_min=0.0, b_max=1.0, clip=True),
+                transforms.SpatialPadd(keys=["image"], mode="minimum", spatial_size=[96, 96, 96]),
+                transforms.ToTensord(keys=["image", "label"]),
+            ]
+        )
+        val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
+        val_org_ds = data.Dataset(val_files, transform=val_org_transform)
+
     elif args.val_mode == 'txt':
-        print('txt mode')
+        print('Use txt mode')
         val_org_transform = transforms.Compose(
             [
                 transforms.LoadImaged(keys=["image", "label", "organ_pseudo"]),

@@ -108,28 +108,33 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
         potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_points)] == 1:
             # Check if the point is not at the edge
-            liver_mask = np.zeros_like(mask_scan, dtype=np.int16)
-            liver_mask[mask_scan == 1] = 1
-            liver_mask[mask_scan == 2] = 1
-            if not is_edge_point(liver_mask, potential_points):
+            if not is_edge_point(mask_scan, potential_points):
                 return potential_points
-            return potential_points
+
         loop_count += 1
 
     potential_points = random_select(mask_scan)
     return potential_points
 
 
-def is_edge_point(liver_mask, point):
-    kernel = np.ones((5, 5, 5), np.uint8)
+def is_edge_point(mask_scan, potential_points, neighborhood_size=(3, 3, 3), threshold=5):
+    # Define the boundaries of the neighborhood around the potential point
+    min_bounds = np.maximum(potential_points - np.array(neighborhood_size) // 2, 0)
+    max_bounds = np.minimum(potential_points + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
 
-    liver_edges = cv2.erode(liver_mask.astype(np.uint8), kernel, iterations=1)
+    # Extract the neighborhood volume from the mask scan
+    neighborhood_volume = mask_scan[min_bounds[0]:max_bounds[0]+1,
+                                    min_bounds[1]:max_bounds[1]+1,
+                                    min_bounds[2]:max_bounds[2]+1]
 
-    x, y, z = point
-    if liver_edges[x, y, z] == 0:
-        return True
+    # Count the number of liver voxels in the neighborhood
+    liver_voxel_count = np.sum(neighborhood_volume == 1)
+
+    # Check if the liver voxel count is below the threshold
+    if liver_voxel_count < threshold:
+        return True  # Potential point is considered to be on the edge
     else:
-        return False
+        return False  # Potential point is considered to be inside the liver
 
 
 # Step 2 : generate the ellipsoid

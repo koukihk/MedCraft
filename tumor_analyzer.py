@@ -99,6 +99,29 @@ class TumorAnalyzer:
             except Exception as e:
                 print("Error occurred while loading data and fitting GMM model:", e)
 
+    @staticmethod
+    def fitting_ellipsoid_center(extracted_label_numeric):
+        """
+        Fits an ellipsoid, and gets its center.
+        """
+        # Residual function to minimize
+        def residual(params):
+            cx, cy, cz, a, b, c = params
+            distances = np.sqrt(((x - cx) / a) ** 2 + ((y - cy) / b) ** 2 + ((z - cz) / c) ** 2) - 1
+            return distances
+
+        # Get coordinates of tumor voxels
+        x, y, z = np.where(extracted_label_numeric)
+
+        # Initial guess for the parameters of the ellipsoid (center and radii)
+        initial_guess = [np.mean(x), np.mean(y), np.mean(z), 1, 1, 1]
+
+        # Fit ellipsoid parameters
+        result = least_squares(residual, initial_guess)
+        # Extract center of the ellipsoid (which represents tumor position)
+        tumor_position = result.x[:3]
+
+        return tumor_position
 
     @staticmethod
     def analyze_tumor_location(label, liver_label=1, tumor_label=2):
@@ -123,25 +146,10 @@ class TumorAnalyzer:
                     clot_size = np.sum(extracted_label_numeric)
                     if clot_size < 8:
                         continue
-                    # center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                    # Get coordinates of tumor voxels
-                    x, y, z = np.where(extracted_label_numeric)
-
-                    # Initial guess for the parameters of the ellipsoid (center and radii)
-                    initial_guess = [np.mean(x), np.mean(y), np.mean(z), 1, 1, 1]
-
-                    # Residual function to minimize
-                    def residual(params):
-                        cx, cy, cz, a, b, c = params
-                        distances = np.sqrt(((x - cx) / a)**2 + ((y - cy) / b)**2 + ((z - cz) / c)**2) - 1
-                        return distances
-
-                    # Fit ellipsoid parameters
-                    result = least_squares(residual, initial_guess)
-
-                    # Extract center of the ellipsoid (which represents tumor position)
-                    tumor_position = result.x[:3]
-                    tumor_positions.append(tuple(tumor_position))
+                    center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
+                    if any(coord < 0 for coord in center_of_mass):
+                        continue
+                    tumor_positions.append(center_of_mass)
 
             return tumor_positions
 
