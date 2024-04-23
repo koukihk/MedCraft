@@ -6,6 +6,9 @@ import elasticdeform
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
+from tumor_analyzer import TumorAnalyzer
+
+
 def generate_prob_function(mask_shape):
     sigma = np.random.uniform(3, 15)
     # uniform noise generate
@@ -96,15 +99,36 @@ def random_select(mask_scan):
 
     return potential_points
 
+def get_absolute_coordinates(relative_coordinates, original_shape, liver_mask, target_volume_shape):
+    x_ratio = original_shape[0] / target_volume_shape[0]
+    y_ratio = original_shape[1] / target_volume_shape[1]
+    z_ratio = original_shape[2] / target_volume_shape[2]
+
+    absolute_x = relative_coordinates[0] * x_ratio
+    absolute_y = relative_coordinates[1] * y_ratio
+    absolute_z = relative_coordinates[2] * z_ratio
+
+
+    liver_indices = np.argwhere(liver_mask == 1)
+    min_x, min_y, min_z = np.min(liver_indices, axis=0)
+
+    absolute_x += min_x
+    absolute_y += min_y
+    absolute_z += min_z
+
+    return np.array([absolute_x, absolute_y, absolute_z])
 
 def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
     if gmm_model is None:
         potential_points = random_select(mask_scan)
         return potential_points
+    liver_mask = TumorAnalyzer.crop_mask(mask_scan)
+    target_volume_shape = (287, 242, 154)
 
     loop_count = 0
     while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
+        potential_points = get_absolute_coordinates(potential_points, mask_scan.shape, liver_mask, target_volume_shape)
         potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_points)] == 1:
             # Check if the point is not at the edge

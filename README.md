@@ -56,6 +56,8 @@ In general, if not specifically labeled, during all model training, random patch
 
 #### Difftumor(Semi-Supervised)
 
+**Trains / validates models on MSD-Liver fold 0.**
+
 |                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
 | :------------: | :--------------: | :------------: | :----------: |
 | **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
@@ -63,23 +65,34 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** |   **0.69001**    |  **0.68217**   | **0.75031**  |
 | **Tumor Nsd**  |   **0.69970**    |  **0.74257**   | **0.77798**  |
 
-#### Difftumor(Unsupervised)
+#### Difftumor(Unsupervised STEP2)
+
+**Uses 04 LiTS for synthetic tumors, and trains / validates models on MSD-Liver fold 0.**
 
 |                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
 | :------------: | :--------------: | :------------: | :----------: |
-| **Liver Dice** |                  |                |              |
-| **Liver Nsd**  |                  |                |              |
-| **Tumor Dice** |                  |                |              |
-| **Tumor Nsd**  |                  |                |              |
+| **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
+| **Liver Nsd**  |   **0.88588**    |  **0.91371**   | **0.88923**  |
+| **Tumor Dice** |   **0.69984**    |  **0.66542**   | **0.73207**  |
+| **Tumor Nsd**  |   **0.69913**    |  **0.70265**   | **0.74290**  |
+
+#### Pixel2Cancer(Unsupervised)
+
+|                | UNet | UNet(Global) |
+| :------------: | :--: | :----------: |
+| **Liver Dice** |      |              |
+| **Liver Nsd**  |      |              |
+| **Tumor Dice** |      |              |
+| **Tumor Nsd**  |      |              |
 
 #### Manual method modification
 
-|                | UNET(GMM) | UNET(GMM,Global) | UNET(+15% Sphere) |
-| :------------: | :-------: | :--------------: | :---------------: |
-| **Liver Dice** |           |                  |    **0.96185**    |
-| **Liver Nsd**  |           |                  |    **0.87860**    |
-| **Tumor Dice** |           |                  |    **0.58081**    |
-| **Tumor Nsd**  |           |                  |    **0.62556**    |
+|                | UNET(GMM) | UNET(GMM, Global) | UNET(+15% Sphere) |
+| :------------: | :-------: | :---------------: | :---------------: |
+| **Liver Dice** |           |                   |    **0.96185**    |
+| **Liver Nsd**  |           |                   |    **0.87860**    |
+| **Tumor Dice** |           |                   |    **0.58081**    |
+| **Tumor Nsd**  |           |                   |    **0.62556**    |
 
 ### AI model trained by real tumors for comparison(Self)
 
