@@ -125,6 +125,7 @@ class TumorAnalyzer:
 
         return liver_mask
 
+    @staticmethod
     def resize_mask(volume, new_shape):
         """
         Resizes the volume on given shape.
