@@ -6,8 +6,6 @@ import elasticdeform
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-from tumor_analyzer import TumorAnalyzer
-
 
 def generate_prob_function(mask_shape):
     sigma = np.random.uniform(3, 15)
@@ -99,7 +97,8 @@ def random_select(mask_scan):
 
     return potential_points
 
-def get_absolute_coordinates(relative_coordinates, original_shape, liver_mask, target_volume_shape):
+
+def get_absolute_coordinates(relative_coordinates, original_shape, target_volume_shape, start):
     x_ratio = original_shape[0] / target_volume_shape[0]
     y_ratio = original_shape[1] / target_volume_shape[1]
     z_ratio = original_shape[2] / target_volume_shape[2]
@@ -108,27 +107,39 @@ def get_absolute_coordinates(relative_coordinates, original_shape, liver_mask, t
     absolute_y = relative_coordinates[1] * y_ratio
     absolute_z = relative_coordinates[2] * z_ratio
 
+    # liver_indices = np.argwhere(liver_mask == 1)
+    # min_x, min_y, min_z = np.min(liver_indices, axis=0)
 
-    liver_indices = np.argwhere(liver_mask == 1)
-    min_x, min_y, min_z = np.min(liver_indices, axis=0)
-
-    absolute_x += min_x
-    absolute_y += min_y
-    absolute_z += min_z
+    absolute_x += start[0]
+    absolute_y += start[1]
+    absolute_z += start[2]
 
     return np.array([absolute_x, absolute_y, absolute_z])
 
-def random_select_mod(mask_scan, gmm_model=None, max_attempts=500):
+
+def random_select_mod(mask_scan, gmm_model=None, max_attempts=600):
     if gmm_model is None:
         potential_points = random_select(mask_scan)
         return potential_points
-    liver_mask = TumorAnalyzer.crop_mask(mask_scan)
+    # for speed_generate_tumor, we only send the liver part into the generate program
+    x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
+    y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
+    z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
+
+    # shrink the boundary
+    x_start, x_end = max(0, x_start + 1), min(mask_scan.shape[0], x_end - 1)
+    y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
+    z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
+
+    # liver_mask = mask_scan[x_start:x_end, y_start:y_end, z_start:z_end]
     target_volume_shape = (287, 242, 154)
+    start = (x_start, y_start, z_start)
 
     loop_count = 0
     while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
-        potential_points = get_absolute_coordinates(potential_points, mask_scan.shape, liver_mask, target_volume_shape)
+        potential_points = get_absolute_coordinates(potential_points, mask_scan.shape, target_volume_shape,
+                                                    start)
         potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_points)] == 1:
             # Check if the point is not at the edge
@@ -147,9 +158,9 @@ def is_edge_point(mask_scan, potential_points, neighborhood_size=(3, 3, 3), thre
     max_bounds = np.minimum(potential_points + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
 
     # Extract the neighborhood volume from the mask scan
-    neighborhood_volume = mask_scan[min_bounds[0]:max_bounds[0]+1,
-                                    min_bounds[1]:max_bounds[1]+1,
-                                    min_bounds[2]:max_bounds[2]+1]
+    neighborhood_volume = mask_scan[min_bounds[0]:max_bounds[0] + 1,
+                          min_bounds[1]:max_bounds[1] + 1,
+                          min_bounds[2]:max_bounds[2] + 1]
 
     # Count the number of liver voxels in the neighborhood
     liver_voxel_count = np.sum(neighborhood_volume == 1)
