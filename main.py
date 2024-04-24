@@ -372,17 +372,11 @@ def main_worker(gpu, args):
     if args.gmm:
         start_time = time.time()
         optimal_components = args.optimal_components
-        print('GMM STEP 1')
         analyzer = TumorAnalyzer()
-        # print(analyzer)
-        print('GMM STEP 2')
         analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42)  # here we use LiTS and you can modify it
-        print('GMM STEP 3')
         gmm_model = analyzer.get_gmm_model()
-        print('GMM STEP 4')
         end_time = time.time()
         duration = end_time - start_time
-        print('GMM STEP 5')
         print("GMM fixing execution time: {:.2f} s".format(duration))
     else:
         gmm_model = None
