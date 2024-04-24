@@ -35,7 +35,7 @@ parser.add_argument('--syn', action='store_true')  # use synthetic tumors for tr
 parser.add_argument('--gen', action='store_true')   # only for saving synthetic CT
 parser.add_argument('--gen_folder', default='normal')   # only for saving synthetic CT
 parser.add_argument('--gmm', action='store_true')   # use GMM for selecting tumor points
-parser.add_argument('--optimal_components', default=3, type=int)
+parser.add_argument('--optimal_components', default=4, type=int)
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
 parser.add_argument('--logdir', default=None)
@@ -240,19 +240,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args):
-
-    if args.gmm:
-        start_time = time.time()
-        optimal_components = args.optimal_components
-        analyzer = TumorAnalyzer()
-        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42)  # here we use LiTS and you can modify it
-        gmm_model = analyzer.get_gmm_model()
-        end_time = time.time()
-        duration = end_time - start_time
-        print("GMM fixing execution time: {:.2f} s".format(duration))
-    else:
-        gmm_model = None
+def _get_transform(args, gmm_model=None):
 
     if args.gen:
         train_transform = transforms.Compose(
@@ -262,6 +250,7 @@ def _get_transform(args):
                 TumorGenerated(keys=["image", "label"], prob=1.0, gmm_model=gmm_model),  # here we use online
             ]
         )
+
     elif args.syn:
         train_transform = transforms.Compose(
             [
@@ -269,7 +258,7 @@ def _get_transform(args):
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=0.9),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_model=gmm_model),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -298,6 +287,7 @@ def _get_transform(args):
                 transforms.ToTensord(keys=["image", "label"]),
             ]
         )
+
     else:
         train_transform = transforms.Compose(
             [
@@ -378,6 +368,25 @@ def main():
 
 
 def main_worker(gpu, args):
+
+    if args.gmm:
+        start_time = time.time()
+        optimal_components = args.optimal_components
+        print('GMM STEP 1')
+        analyzer = TumorAnalyzer()
+        # print(analyzer)
+        print('GMM STEP 2')
+        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42)  # here we use LiTS and you can modify it
+        print('GMM STEP 3')
+        gmm_model = analyzer.get_gmm_model()
+        print('GMM STEP 4')
+        end_time = time.time()
+        duration = end_time - start_time
+        print('GMM STEP 5')
+        print("GMM fixing execution time: {:.2f} s".format(duration))
+    else:
+        gmm_model = None
+
     if args.distributed:
         torch.multiprocessing.set_start_method('fork',
                                                force=True)  # in new Pytorch/python labda functions fail to pickle with spawn
@@ -411,7 +420,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args)
+    train_transform, val_transform = _get_transform(args, gmm_model)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
