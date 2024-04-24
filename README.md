@@ -76,6 +76,15 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** |   **0.69984**    |  **0.66542**   | **0.73207**  |
 | **Tumor Nsd**  |   **0.69913**    |  **0.70265**   | **0.74290**  |
 
+**Uses 04 LiTS for synthetic tumors, and trains / validates models on MSD-Liver fold 0 without timestep params of noearly model.**
+
+|                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
+| :------------: | :--------------: | :------------: | :----------: |
+| **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
+| **Liver Nsd**  |   **0.88588**    |  **0.91371**   | **0.88923**  |
+| **Tumor Dice** |   **0.70176**    |  **0.68270**   | **0.75117**  |
+| **Tumor Nsd**  |   **0.71339**    |  **0.73555**   | **0.77463**  |
+
 #### Pixel2Cancer(Unsupervised)
 
 |                | UNet | UNet(Global) |
