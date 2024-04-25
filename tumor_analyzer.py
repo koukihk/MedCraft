@@ -84,15 +84,22 @@ class TumorAnalyzer:
             print("Error occurred while processing file", ct_file, ":", e)
             return []
 
-    def load_data(self, data_folder):
+    def load_data(self, data_folder, parallel=False):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
         try:
             ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
 
-            with Pool() as pool:
-                results = pool.starmap(TumorAnalyzer.process_file, [(ct_file, data_folder, self.healthy_ct) for ct_file in ct_files])
+            if parallel:
+                with Pool() as pool:
+                    results = pool.starmap(TumorAnalyzer.process_file,
+                                           [(ct_file, data_folder, self.healthy_ct) for ct_file in ct_files])
+            else:
+                results = []
+                for ct_file in ct_files:
+                    result = TumorAnalyzer.process_file(ct_file, data_folder, self.healthy_ct)
+                    results.append(result)
 
             tumor_positions = [position for sublist in results for position in sublist]
 
@@ -113,7 +120,7 @@ class TumorAnalyzer:
         """
         if not self.gmm_flag:
             try:
-                self.load_data(data_folder)
+                self.load_data(data_folder, parallel=False)
                 train_data, val_data = self.split_train_val(test_size=test_size, random_state=random_state)
                 self.fit_gmm_model(train_data, val_data, optimal_components, 500)
                 self.gmm_flag = True
