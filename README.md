@@ -45,45 +45,29 @@ In general, if not specifically labeled, during all model training, random patch
 | **Tumor Dice** | **0.57500** - 0.5981 | **0.60817**  | **0.54407** |  **0.59870**   |    **0.57025 - 0.5594**     |     **0.55158 - 0.5594**      |      **0.54079 - 0.5637**      |     **0.53372 - 0.5510**      |
 | **Tumor Nsd**  | **0.62084** - 0.6128 | **0.63772**  | **0.57940** |  **0.62433**   |    **0.60829** - 0.5820     |      **0.60278** - 0.582      |      **0.58507** - 0.5824      |     **0.56287** - 0.5561      |
 
-#### Mamba Model
 
-|                | SegMamba v1 | SegMamba v1(Global) | SegMamba v2 | SegMamba v2(Global) |
-| :------------: | :---------: | :-----------------: | :---------: | :-----------------: |
-| **Liver Dice** | **0.95851** |     **0.94532**     | **0.96300** |     **0.95292**     |
-| **Liver Nsd**  | **0.86826** |     **0.84355**     | **0.88415** |     **0.86724**     |
-| **Tumor Dice** | **0.51011** |     **0.54694**     | **0.55682** |     **0.58262**     |
-| **Tumor Nsd**  | **0.54203** |     **0.56692**     | **0.58413** |     **0.59475**     |
 
 #### Difftumor(Semi-Supervised)
 
 **Trains / validates models on MSD-Liver fold 0.**
 
-|                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
-| :------------: | :--------------: | :------------: | :----------: |
-| **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
-| **Liver Nsd**  |   **0.88588**    |  **0.91371**   | **0.88923**  |
-| **Tumor Dice** |   **0.69001**    |  **0.68217**   | **0.75031**  |
-| **Tumor Nsd**  |   **0.69970**    |  **0.74257**   | **0.77798**  |
+|                |    UNet     | UNet(Global) |
+| :------------: | :---------: | :----------: |
+| **Liver Dice** | **0.94906** | **0.94981**  |
+| **Liver Nsd**  | **0.88588** | **0.88923**  |
+| **Tumor Dice** | **0.69001** | **0.75031**  |
+| **Tumor Nsd**  | **0.69970** | **0.77798**  |
 
 #### Difftumor(Unsupervised STEP2)
 
 **Uses 04 LiTS for synthetic tumors, and trains / validates models on MSD-Liver fold 0.**
 
-|                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
-| :------------: | :--------------: | :------------: | :----------: |
-| **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
-| **Liver Nsd**  |   **0.88588**    |  **0.91371**   | **0.88923**  |
-| **Tumor Dice** |   **0.69984**    |  **0.66542**   | **0.73207**  |
-| **Tumor Nsd**  |   **0.69913**    |  **0.70265**   | **0.74290**  |
-
-**Uses 04 LiTS for synthetic tumors, and trains / validates models on MSD-Liver fold 0 without timestep params of noearly model.**
-
-|                | UNet(Chen‘s Val) | UNet(Hu's Val) | UNet(Global) |
-| :------------: | :--------------: | :------------: | :----------: |
-| **Liver Dice** |   **0.94906**    |  **0.96005**   | **0.94981**  |
-| **Liver Nsd**  |   **0.88588**    |  **0.91371**   | **0.88923**  |
-| **Tumor Dice** |   **0.70176**    |  **0.68270**   | **0.75117**  |
-| **Tumor Nsd**  |   **0.71339**    |  **0.73555**   | **0.77463**  |
+|                | UNet2000 | UNet2000(Global) | UNet4000 | UNet4000(Global) |
+| :------------: | :------: | :--------------: | :------: | :--------------: |
+| **Liver Dice** |          |                  |          |                  |
+| **Liver Nsd**  |          |                  |          |                  |
+| **Tumor Dice** |          |                  |          |                  |
+| **Tumor Nsd**  |          |                  |          |                  |
 
 #### Pixel2Cancer(Unsupervised)
 

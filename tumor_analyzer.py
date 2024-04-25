@@ -22,7 +22,8 @@ class TumorAnalyzer:
         self.unhealthy_mean_size = (282, 244, 143)
         self.target_volume = self.healthy_mean_size
 
-    def fit_gmm_model(self, train_data, val_data, optimal_components, max_iter=500):
+    def fit_gmm_model(self, train_data, val_data, optimal_components, max_iter=500, early_stopping=True, tol=0.00001,
+                      patience=5):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
@@ -31,18 +32,31 @@ class TumorAnalyzer:
                 n_components=optimal_components,
                 covariance_type='full',
                 init_params='k-means++',
-                tol=0.000001,
+                tol=tol,
                 max_iter=max_iter
             )
 
-            prev_score = float('-inf')
+            best_score = float('-inf')
+            best_params = None
+            no_improvement_count = 0
+
             for iter in range(max_iter):
                 self.gmm_model.fit(train_data)
                 val_score = self.gmm_model.score(val_data)
-                if val_score < prev_score:
-                    print("Validation score decreased. Stopping early.")
+
+                if val_score > best_score:
+                    best_score = val_score
+                    best_params = self.gmm_model.get_params()
+                    no_improvement_count = 0
+                else:
+                    no_improvement_count += 1
+
+                if early_stopping and no_improvement_count >= patience:
+                    print("Validation score did not improve for {} iterations. Rolling back to best model.".format(
+                        patience))
+                    self.gmm_model.set_params(**best_params)
                     break
-                prev_score = val_score
+
         except Exception as e:
             print("Error occurred while fitting GMM model:", e)
 

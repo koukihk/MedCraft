@@ -240,7 +240,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_model=None):
+def _get_transform(args, gmm_model):
 
     if args.gen:
         train_transform = transforms.Compose(
