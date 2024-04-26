@@ -121,16 +121,16 @@ class TumorAnalyzer:
                         if not file_name in valid_ct_name:
                             valid_ct_name.append(file_name)
 
-                        f.write(f"File Name: {file_name}, Tumor Size (mmR): {clot_size_mmR}\n")
+                        f.write(f"File Name: {file_name}, "
+                                f"Tumor Size (pixel): {clot_size}, "
+                                f"Tumor Size (voxel): {clot_size}, "
+                                f"Tumor Size (mmR): {clot_size_mmR}\n")
 
         print("Tumor Analysis Result:")
         print("Tiny:", tiny)
         print("Small:", small)
         print("Medium:", medium)
         print("Large:", large)
-        print("Total Clot Size:", total_clot_size)
-        print("Total Clot Size (mmR):", total_clot_size_mmR)
-        print("Valid CT Names:", valid_ct_name)
 
         return tiny, small, medium, large, total_clot_size, total_clot_size_mmR, valid_ct_name
 
