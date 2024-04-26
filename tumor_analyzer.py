@@ -118,7 +118,8 @@ class TumorAnalyzer:
 
                         total_clot_size.append(clot_size)
                         total_clot_size_mmR.append(clot_size_mmR)
-                        valid_ct_name.append(file_name)
+                        if not file_name in valid_ct_name:
+                            valid_ct_name.append(file_name)
 
                         f.write(f"File Name: {file_name}, Tumor Size (mmR): {clot_size_mmR}\n")
 
