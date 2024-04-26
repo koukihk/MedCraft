@@ -1,4 +1,5 @@
 import os
+import glob
 from tqdm import tqdm
 from multiprocessing import Pool
 
@@ -62,6 +63,77 @@ class TumorAnalyzer:
             print("Error occurred while fitting GMM model:", e)
 
     @staticmethod
+    def voxel2R(A):
+        return (np.array(A) / 4 * 3 / np.pi) ** (1 / 3)
+
+    @staticmethod
+    def pixel2voxel(A, res=[0.75, 0.75, 0.5]):
+        return np.array(A) * (res[0] * res[1] * res[2])
+
+    @staticmethod
+    def analyze_tumor_type(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/'):
+        tiny, small, medium, large = 0, 0, 0, 0
+        total_clot_size = []
+        total_clot_size_mmR = []
+        valid_ct_name = []
+        label_paths = glob.glob(os.path.join(data_dir, 'liver*.nii.gz'))
+        label_paths.sort()
+
+        result_file = os.path.join(output_save_dir, 'tumor_type_result.txt')
+        with open(result_file, 'w') as f:
+            for label_path in label_paths:
+                print('label_path', label_path)
+                file_name = os.path.basename(label_path)
+
+                label = nib.load(label_path)
+                pixdim = label.header['pixdim']
+                spacing_mm = tuple(pixdim[1:4])
+                raw_label = label.get_fdata()
+
+                tumor_mask = np.zeros_like(raw_label).astype(np.int16)
+                organ_mask = np.zeros_like(raw_label).astype(np.int16)
+                organ_mask[raw_label == 1] = 1
+                organ_mask[raw_label == 2] = 1
+                tumor_mask[raw_label == 2] = 1
+
+                if len(np.unique(tumor_mask)) > 1:
+                    label_numeric, gt_N = ndimage.label(tumor_mask)
+                    for segid in range(1, gt_N + 1):
+                        extracted_label_numeric = np.uint8(label_numeric == segid)
+                        clot_size = np.sum(extracted_label_numeric)
+                        if clot_size < 8:
+                            continue
+                        clot_size_mm = TumorAnalyzer.pixel2voxel(clot_size, spacing_mm)
+                        clot_size_mmR = TumorAnalyzer.voxel2R(clot_size_mm)
+                        print('tumor clot_size_mmR', clot_size_mmR)
+
+                        if 8 <= clot_size_mmR < 12:
+                            tiny += 1
+                        elif 12 <= clot_size_mmR < 24:
+                            small += 1
+                        elif 24 <= clot_size_mmR < 48:
+                            medium += 1
+                        else:
+                            large += 1
+
+                        total_clot_size.append(clot_size)
+                        total_clot_size_mmR.append(clot_size_mmR)
+                        valid_ct_name.append(file_name)
+
+                        f.write(f"File Name: {file_name}, Tumor Size (mmR): {clot_size_mmR}\n")
+
+        print("Tumor Analysis Result:")
+        print("Tiny:", tiny)
+        print("Small:", small)
+        print("Medium:", medium)
+        print("Large:", large)
+        print("Total Clot Size:", total_clot_size)
+        print("Total Clot Size (mmR):", total_clot_size_mmR)
+        print("Valid CT Names:", valid_ct_name)
+
+        return tiny, small, medium, large, total_clot_size, total_clot_size_mmR, valid_ct_name
+
+    @staticmethod
     def process_file(ct_file, data_folder, healthy_ct):
         try:
             if ct_file.startswith("._"):
@@ -99,7 +171,7 @@ class TumorAnalyzer:
                                         total=len(ct_files), desc="Loading dataset"))
             else:
                 results = []
-                for ct_file in tqdm(ct_files, desc="Loading dataset"):
+                for ct_file in tqdm(ct_files, total=len(ct_files), desc="Loading dataset"):
                     result = TumorAnalyzer.process_file(ct_file, data_folder, self.healthy_ct)
                     results.append(result)
 

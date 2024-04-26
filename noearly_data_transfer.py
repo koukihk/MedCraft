@@ -36,10 +36,10 @@ def filter_liver_noearly_tumor(data_dir='/mnt/ccvl15/zzhou82/PublicAbdominalData
     total_clot_size = []
     total_clot_size_mmR = []
     valid_ct_name = []
-    lael_paths = glob.glob(os.path.join(data_dir, '*'))
-    lael_paths.sort()
+    label_paths = glob.glob(os.path.join(data_dir, '*'))
+    label_paths.sort()
 
-    for label_path in lael_paths:
+    for label_path in label_paths:
         print('label_path', label_path)
         file_name = os.path.basename(label_path)
 
