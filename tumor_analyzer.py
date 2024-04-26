@@ -126,10 +126,13 @@ class TumorAnalyzer:
                                 f"Tumor Size (voxel): {clot_size}, "
                                 f"Tumor Size (mmR): {clot_size_mmR}\n")
 
-        total = tiny + small + medium + large
-        f.write(
-            f"Tiny: {tiny} ({tiny / total:.2%}), "f"Small: {small} ({small / total:.2%}), "
-            f"Medium: {medium} ({medium / total:.2%}), "f"Large: {large} ({large / total:.2%})")
+        with open(result_file, 'a') as f:
+            f.write(f"Valid_ct: {len(valid_ct_name)}\n")
+
+            total = tiny + small + medium + large
+            f.write(
+                f"Tiny: {tiny} ({tiny / total:.2%}), "f"Small: {small} ({small / total:.2%}), "
+                f"Medium: {medium} ({medium / total:.2%}), "f"Large: {large} ({large / total:.2%})")
 
         return tiny, small, medium, large, total_clot_size, total_clot_size_mmR, valid_ct_name
 
