@@ -107,11 +107,11 @@ class TumorAnalyzer:
                         clot_size_mmR = TumorAnalyzer.voxel2R(clot_size_mm)
                         print('tumor clot_size_mmR', clot_size_mmR)
 
-                        if 8 <= clot_size_mmR < 12:
+                        if clot_size_mmR <= 10:
                             tiny += 1
-                        elif 12 <= clot_size_mmR < 24:
+                        elif 10 < clot_size_mmR <= 25:
                             small += 1
-                        elif 24 <= clot_size_mmR < 48:
+                        elif 25 < clot_size_mmR <= 50:
                             medium += 1
                         else:
                             large += 1
