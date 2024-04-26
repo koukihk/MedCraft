@@ -163,16 +163,15 @@ class TumorAnalyzer:
         """
         try:
             ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
-            ct_files_num = (len(ct_files) // 2) - len(self.healthy_ct)
 
             if parallel:
                 with Pool() as pool:
                     results = list(tqdm(pool.imap(TumorAnalyzer.process_file,
                                                   [(ct_file, data_folder, self.healthy_ct) for ct_file in ct_files]),
-                                        total=ct_files_num, desc="Loading dataset"))
+                                        total=len(ct_files), desc="Loading dataset"))
             else:
                 results = []
-                for ct_file in tqdm(ct_files, total=ct_files_num, desc="Loading dataset"):
+                for ct_file in tqdm(ct_files, total=len(ct_files), desc="Loading dataset"):
                     result = TumorAnalyzer.process_file(ct_file, data_folder, self.healthy_ct)
                     results.append(result)
 
