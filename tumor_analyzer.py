@@ -370,10 +370,11 @@ class TumorAnalyzer:
                     original_clot_size = np.sum(mapped_tumor_region)
                     if original_clot_size < 8:
                         continue
-                    center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                    if any(coord < 0 for coord in center_of_mass):
+                    position = ndimage.measurements.center_of_mass(extracted_label_numeric)
+                    if any(coord < 0 for coord in position):
                         continue
-                    tumor = Tumor(position=center_of_mass, filename=filename)
+                    type = TumorAnalyzer.analyze_tumor_type_helper(original_clot_size, original_spacing)
+                    tumor = Tumor(position=position, type=type, filename=filename)
                     tumors.append(tumor)
 
             return tumors
