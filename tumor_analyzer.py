@@ -269,7 +269,7 @@ class TumorAnalyzer:
     @staticmethod
     def resize_mask(volume, new_shape):
         """
-        Resizes the volume on given shape using cubic spline interpolation.
+        Resizes the volume on given shape.
         """
         x_old, y_old, z_old = volume.shape
         x_new, y_new, z_new = new_shape
@@ -283,8 +283,8 @@ class TumorAnalyzer:
         new_y = np.linspace(0, y_old - 1, y_new)
         new_z = np.linspace(0, z_old - 1, z_new)
 
-        # Create interpolation function using cubic spline interpolation
-        interpolator = interpolate.RegularGridInterpolator((x, y, z), volume, method='cubic', bounds_error=False,
+        # Create interpolation function
+        interpolator = interpolate.RegularGridInterpolator((x, y, z), volume, method='nearest', bounds_error=False,
                                                            fill_value=0)
 
         # Interpolate volume
@@ -340,16 +340,15 @@ class TumorAnalyzer:
     @staticmethod
     def analyze_tumors(label_path, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
         """
-        Analyzes tumor location from label data.
+        Analyzes tumor information from label data.
         """
         try:
-            filename = os.path.basename(label_path)
+            file_name = os.path.basename(label_path)
             label = nib.load(label_path)
+            shape = label.shape
+            pixdim = label.header['pixdim']
+            spacing_mm = tuple(pixdim[1:4])
             label_data = label.get_fdata()
-
-            original_shape = label_data.shape
-            pixdim = label_data.header['pixdim']
-            original_spacing = tuple(pixdim[1:4])
 
             organ_mask = TumorAnalyzer.crop_mask(label_data)
             organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
@@ -368,8 +367,8 @@ class TumorAnalyzer:
                     extracted_label_numeric = np.uint8(label_numeric == segid)
                     # clot_size = np.sum(extracted_label_numeric)
                     mapped_tumor_region = TumorAnalyzer.map_tumor_region_to_original_space(
-                        extracted_label_numeric, original_shape, original_spacing,
-                        extracted_label_numeric.shape, original_spacing
+                        extracted_label_numeric, shape, spacing_mm,
+                        extracted_label_numeric.shape, spacing_mm
                     )
                     original_clot_size = np.sum(mapped_tumor_region)
                     if original_clot_size < 8:
@@ -377,14 +376,14 @@ class TumorAnalyzer:
                     position = ndimage.measurements.center_of_mass(extracted_label_numeric)
                     if any(coord < 0 for coord in position):
                         continue
-                    type = TumorAnalyzer.analyze_tumor_type_helper(original_clot_size, original_spacing)
-                    tumor = Tumor(position=position, type=type, filename=filename)
+                    type = TumorAnalyzer.analyze_tumor_type_helper(original_clot_size, spacing_mm)
+                    tumor = Tumor(position=position, type=type, filename=file_name)
                     tumors.append(tumor)
 
             return tumors
 
         except Exception as e:
-            print("Error occurred while analyzing tumor location:", e)
+            print("Error occurred while analyzing tumors:", e)
             return []
 
     def get_gmm_model(self):
