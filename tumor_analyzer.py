@@ -10,6 +10,9 @@ from scipy import ndimage
 from scipy.optimize import least_squares
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
+from scipy.ndimage import map_coordinates
+from scipy.interpolate import RegularGridInterpolator
+from skimage.transform import PiecewiseAffineTransform, warp
 
 class Tumor:
     def __init__(self, position, type=None, filename=None):
@@ -138,51 +141,6 @@ class TumorAnalyzer:
                 print("Error occurred while loading data and fitting GMM model:", e)
 
     @staticmethod
-    def crop_mask(mask_scan):
-        """
-        Crops the volume to get the liver mask.
-        """
-        # for speed_generate_tumor, we only send the liver part into the generate program
-        x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
-        y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
-        z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
-
-        # shrink the boundary
-        x_start, x_end = max(0, x_start + 1), min(mask_scan.shape[0], x_end - 1)
-        y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
-        z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
-
-        liver_mask = mask_scan[x_start:x_end, y_start:y_end, z_start:z_end]
-
-        return liver_mask
-
-    @staticmethod
-    def resize_mask(volume, new_shape):
-        """
-        Resizes the volume on given shape.
-        """
-        x_old, y_old, z_old = volume.shape
-        x_new, y_new, z_new = new_shape
-
-        # Create grid for interpolation
-        x = np.linspace(0, x_old - 1, x_old)
-        y = np.linspace(0, y_old - 1, y_old)
-        z = np.linspace(0, z_old - 1, z_old)
-
-        new_x = np.linspace(0, x_old - 1, x_new)
-        new_y = np.linspace(0, y_old - 1, y_new)
-        new_z = np.linspace(0, z_old - 1, z_new)
-
-        # Create interpolation function
-        interpolator = interpolate.RegularGridInterpolator((x, y, z), volume, method='linear', bounds_error=False,
-                                                           fill_value=0)
-
-        # Interpolate volume
-        new_volume = interpolator((new_x[:, None, None], new_y[None, :, None], new_z[None, None, :]))
-
-        return np.round(new_volume).astype(int)
-
-    @staticmethod
     def fit_ellipsoid_center(extracted_label_numeric):
         """
         Fits an ellipsoid, and gets its center.
@@ -288,21 +246,57 @@ class TumorAnalyzer:
 
         return tumor_counts['tiny'], tumor_counts['small'], tumor_counts['medium'], tumor_counts[
             'large'], total_clot_size, total_clot_size_mmR, valid_ct_name
+
+    @staticmethod
+    def crop_mask(mask_scan):
+        """
+        Crops the volume to get the liver mask.
+        """
+        # for speed_generate_tumor, we only send the liver part into the generate program
+        x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
+        y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
+        z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
+
+        # shrink the boundary
+        x_start, x_end = max(0, x_start + 1), min(mask_scan.shape[0], x_end - 1)
+        y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
+        z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
+
+        liver_mask = mask_scan[x_start:x_end, y_start:y_end, z_start:z_end]
+
+        return liver_mask
+
+    @staticmethod
+    def resize_mask(volume, new_shape):
+        """
+        Resizes the volume on given shape using cubic spline interpolation.
+        """
+        x_old, y_old, z_old = volume.shape
+        x_new, y_new, z_new = new_shape
+
+        # Create grid for interpolation
+        x = np.linspace(0, x_old - 1, x_old)
+        y = np.linspace(0, y_old - 1, y_old)
+        z = np.linspace(0, z_old - 1, z_old)
+
+        new_x = np.linspace(0, x_old - 1, x_new)
+        new_y = np.linspace(0, y_old - 1, y_new)
+        new_z = np.linspace(0, z_old - 1, z_new)
+
+        # Create interpolation function using cubic spline interpolation
+        interpolator = interpolate.RegularGridInterpolator((x, y, z), volume, method='cubic', bounds_error=False,
+                                                           fill_value=0)
+
+        # Interpolate volume
+        new_volume = interpolator((new_x[:, None, None], new_y[None, :, None], new_z[None, None, :]))
+
+        return np.round(new_volume).astype(int)
+
     @staticmethod
     def map_tumor_region_to_original_space(extracted_label_numeric, original_shape, original_spacing, current_shape,
                                            current_spacing):
         """
-        Maps the tumor region back to the original space.
-
-        Parameters:
-            extracted_label_numeric (ndarray): The binary mask of the currently analyzed tumor region.
-            original_shape (tuple): The original shape of the label data.
-            original_spacing (tuple): The original spacing of the label data.
-            current_shape (tuple): The current shape of the extracted region.
-            current_spacing (tuple): The current spacing of the extracted region.
-
-        Returns:
-            ndarray: The binary mask of the tumor region mapped back to the original space.
+        Maps the tumor region back to the original space using piecewise affine transformation.
         """
         # Calculate scaling factors
         scale_factors = [o / c for o, c in zip(original_spacing, current_spacing)]
@@ -319,19 +313,29 @@ class TumorAnalyzer:
         y_old_scaled = y_new * scale_factors[1]
         z_old_scaled = z_new * scale_factors[2]
 
-        # Create interpolation function
-        interpolator = interpolate.RegularGridInterpolator(
-            (x_old_scaled.flatten(), y_old_scaled.flatten(), z_old_scaled.flatten()),
-            resized_label.flatten(), method='nearest', bounds_error=False, fill_value=0
-        )
+        # Reshape to 1D arrays
+        x_old_scaled_flat = x_old_scaled.flatten()
+        y_old_scaled_flat = y_old_scaled.flatten()
+        z_old_scaled_flat = z_old_scaled.flatten()
+        resized_label_flat = resized_label.flatten()
 
-        # Interpolate label back to original space
-        label_in_original_space = interpolator((x_old.flatten(), y_old.flatten(), z_old.flatten()))
+        # Create piecewise affine transformation
+        piecewise_transform = PiecewiseAffineTransform()
+        piecewise_transform.estimate(np.column_stack((x_old_scaled_flat, y_old_scaled_flat)),
+                                     np.column_stack((x_old.flatten(), y_old.flatten())))
 
-        # Reshape back to original shape
-        label_in_original_space = label_in_original_space.reshape(original_shape)
+        # Apply piecewise affine transformation to z coordinate
+        z_transformed_flat = piecewise_transform(z_old_scaled_flat)
 
-        return label_in_original_space
+        # Reshape transformed z coordinate
+        z_transformed = z_transformed_flat.reshape(current_shape)
+
+        # Perform nearest neighbor interpolation on the transformed z coordinate
+        mapped_tumor_region = map_coordinates(resized_label_flat.reshape(original_shape),
+                                               [x_old_scaled_flat, y_old_scaled_flat, z_transformed_flat],
+                                               order=0, mode='nearest').reshape(original_shape)
+
+        return mapped_tumor_region
 
     @staticmethod
     def analyze_tumors(label_path, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
