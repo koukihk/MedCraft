@@ -11,6 +11,14 @@ from scipy.optimize import least_squares
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
 
+class Tumor:
+    def __init__(self, position, type=None, filename=None):
+        self.position = position   # relative position
+        self.type = type           # one of ['tiny', 'small', 'medium', 'large']
+        self.filename = filename   # liver_*.nii.gz
+
+    def __repr__(self):
+        return f"Tumor(position={self.position}, type={self.type}, filename={self.filename})"
 
 class TumorAnalyzer:
     def __init__(self):
@@ -63,80 +71,6 @@ class TumorAnalyzer:
             print("Error occurred while fitting GMM model:", e)
 
     @staticmethod
-    def voxel2R(A):
-        return (np.array(A) / 4 * 3 / np.pi) ** (1 / 3)
-
-    @staticmethod
-    def pixel2voxel(A, res=[0.75, 0.75, 0.5]):
-        return np.array(A) * (res[0] * res[1] * res[2])
-
-    @staticmethod
-    def analyze_tumor_type(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/'):
-        tiny, small, medium, large = 0, 0, 0, 0
-        total_clot_size = []
-        total_clot_size_mmR = []
-        valid_ct_name = []
-        label_paths = glob.glob(os.path.join(data_dir, 'liver_*.nii.gz'))
-        label_paths.sort()
-
-        result_file = os.path.join(output_save_dir, 'tumor_type_result.txt')
-        with open(result_file, 'w') as f:
-            for label_path in label_paths:
-                print('label_path', label_path)
-                file_name = os.path.basename(label_path)
-
-                label = nib.load(label_path)
-                pixdim = label.header['pixdim']
-                spacing_mm = tuple(pixdim[1:4])
-                raw_label = label.get_fdata()
-
-                tumor_mask = np.zeros_like(raw_label).astype(np.int16)
-                organ_mask = np.zeros_like(raw_label).astype(np.int16)
-                organ_mask[raw_label == 1] = 1
-                organ_mask[raw_label == 2] = 1
-                tumor_mask[raw_label == 2] = 1
-
-                if len(np.unique(tumor_mask)) > 1:
-                    label_numeric, gt_N = ndimage.label(tumor_mask)
-                    for segid in range(1, gt_N + 1):
-                        extracted_label_numeric = np.uint8(label_numeric == segid)
-                        clot_size = np.sum(extracted_label_numeric)
-                        if clot_size < 8:
-                            continue
-                        clot_size_mm = TumorAnalyzer.pixel2voxel(clot_size, spacing_mm)
-                        clot_size_mmR = TumorAnalyzer.voxel2R(clot_size_mm)
-                        print('tumor clot_size_mmR', clot_size_mmR)
-
-                        if clot_size_mmR <= 10:
-                            tiny += 1
-                        elif 10 < clot_size_mmR <= 25:
-                            small += 1
-                        elif 25 < clot_size_mmR <= 50:
-                            medium += 1
-                        else:
-                            large += 1
-
-                        total_clot_size.append(clot_size)
-                        total_clot_size_mmR.append(clot_size_mmR)
-                        if not file_name in valid_ct_name:
-                            valid_ct_name.append(file_name)
-
-                        f.write(f"File Name: {file_name}, "
-                                f"Tumor Size (pixel): {clot_size}, "
-                                f"Tumor Size (voxel): {clot_size}, "
-                                f"Tumor Size (mmR): {clot_size_mmR}\n")
-
-        with open(result_file, 'a') as f:
-            f.write(f"Valid_ct: {len(valid_ct_name)}\n")
-
-            total = tiny + small + medium + large
-            f.write(
-                f"Tiny: {tiny} ({tiny / total:.2%}), "f"Small: {small} ({small / total:.2%}), "
-                f"Medium: {medium} ({medium / total:.2%}), "f"Large: {large} ({large / total:.2%})")
-
-        return tiny, small, medium, large, total_clot_size, total_clot_size_mmR, valid_ct_name
-
-    @staticmethod
     def process_file(ct_file, data_folder, healthy_ct):
         try:
             if ct_file.startswith("._"):
@@ -152,9 +86,8 @@ class TumorAnalyzer:
             if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
                 return []
 
-            label = nib.load(label_path)
-            positions = TumorAnalyzer.analyze_tumor_location(label, (287, 242, 154), 1, 2)
-
+            tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 1, 2)
+            positions = [tumor.position for tumor in tumors]
             return positions
         except Exception as e:
             print("Error occurred while processing file", ct_file, ":", e)
@@ -274,11 +207,96 @@ class TumorAnalyzer:
         return tumor_position
 
     @staticmethod
-    def analyze_tumor_location(label, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
+    def analyze_tumor_type_helper(clot_size, spacing_mm):
+        def voxel2R(A):
+            return (np.array(A) / 4 * 3 / np.pi) ** (1 / 3)
+
+        def pixel2voxel(A, res=[0.75, 0.75, 0.5]):
+            return np.array(A) * (res[0] * res[1] * res[2])
+
+        clot_size_mm = pixel2voxel(clot_size, spacing_mm)
+        clot_size_mmR = voxel2R(clot_size_mm)
+
+        if clot_size_mmR <= 10:
+            tumor_type = 'tiny'
+        elif 10 < clot_size_mmR <= 25:
+            tumor_type = 'small'
+        elif 25 < clot_size_mmR <= 50:
+            tumor_type = 'medium'
+        else:
+            tumor_type = 'large'
+        return tumor_type, clot_size_mm, clot_size_mmR
+
+    @staticmethod
+    def analyze_tumors_type(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/', file_reg='liver_*.nii.gz'):
+        tumor_counts = {'tiny': 0, 'small': 0, 'medium': 0, 'large': 0}
+        total_clot_size = []
+        total_clot_size_mmR = []
+        valid_ct_name = []
+        label_paths = glob.glob(os.path.join(data_dir, file_reg))
+        label_paths.sort()
+
+        result_file = os.path.join(output_save_dir, 'tumor_type_result.txt')
+        with open(result_file, 'w') as f:
+            for label_path in label_paths:
+                print('label_path', label_path)
+                file_name = os.path.basename(label_path)
+
+                label = nib.load(label_path)
+                pixdim = label.header['pixdim']
+                spacing_mm = tuple(pixdim[1:4])
+                raw_label = label.get_fdata()
+
+                tumor_mask = np.zeros_like(raw_label).astype(np.int16)
+                organ_mask = np.zeros_like(raw_label).astype(np.int16)
+                organ_mask[raw_label == 1] = 1
+                organ_mask[raw_label == 2] = 1
+                tumor_mask[raw_label == 2] = 1
+
+                if len(np.unique(tumor_mask)) > 1:
+                    label_numeric, gt_N = ndimage.label(tumor_mask)
+                    for segid in range(1, gt_N + 1):
+                        extracted_label_numeric = np.uint8(label_numeric == segid)
+                        clot_size = np.sum(extracted_label_numeric)
+                        if clot_size < 8:
+                            continue
+                        tumor_type, clot_size_mm ,clot_size_mmR = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
+                        print('tumor clot_size_mmR', clot_size_mmR, 'tumor_type', tumor_type)
+
+                        if tumor_type in tumor_counts:
+                            tumor_counts[tumor_type] += 1
+                        else:
+                            tumor_counts['large'] += 1
+
+                        total_clot_size.append(clot_size)
+                        total_clot_size_mmR.append(clot_size_mmR)
+                        if not file_name in valid_ct_name:
+                            valid_ct_name.append(file_name)
+
+                        f.write(f"File Name: {file_name}, "
+                                f"Tumor Size (pixel): {clot_size}, "
+                                f"Tumor Size (voxel): {clot_size}, "
+                                f"Tumor Size (mmR): {clot_size_mmR},"
+                                f"Tumor Type: {tumor_type}\n")
+
+        with open(result_file, 'a') as f:
+            f.write(f"Valid_ct: {len(valid_ct_name)}\n")
+
+            total = sum(tumor_counts.values())
+            for tumor_type, count in tumor_counts.items():
+                f.write(f"{tumor_type.capitalize()}: {count} ({count / total:.2%}), ")
+
+        return tumor_counts['tiny'], tumor_counts['small'], tumor_counts['medium'], tumor_counts[
+            'large'], total_clot_size, total_clot_size_mmR, valid_ct_name
+
+    @staticmethod
+    def analyze_tumors(label_path, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
         """
         Analyzes tumor location from label data.
         """
         try:
+            filename = os.path.basename(label_path)
+            label = nib.load(label_path)
             label_data = label.get_fdata()
 
             organ_mask = TumorAnalyzer.crop_mask(label_data)
@@ -290,7 +308,7 @@ class TumorAnalyzer:
             liver_mask[organ_mask == tumor_label] = 1
             tumor_mask[organ_mask == tumor_label] = 1
 
-            tumor_positions = []
+            tumors = []
 
             if len(np.unique(tumor_mask)) > 1:
                 label_numeric, gt_N = ndimage.label(tumor_mask)
@@ -302,9 +320,10 @@ class TumorAnalyzer:
                     center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
                     if any(coord < 0 for coord in center_of_mass):
                         continue
-                    tumor_positions.append(center_of_mass)
+                    tumor = Tumor(position=center_of_mass, filename=filename)
+                    tumors.append(tumor)
 
-            return tumor_positions
+            return tumors
 
         except Exception as e:
             print("Error occurred while analyzing tumor location:", e)
