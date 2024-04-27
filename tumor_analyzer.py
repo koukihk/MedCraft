@@ -288,6 +288,50 @@ class TumorAnalyzer:
 
         return tumor_counts['tiny'], tumor_counts['small'], tumor_counts['medium'], tumor_counts[
             'large'], total_clot_size, total_clot_size_mmR, valid_ct_name
+    @staticmethod
+    def map_tumor_region_to_original_space(extracted_label_numeric, original_shape, original_spacing, current_shape,
+                                           current_spacing):
+        """
+        Maps the tumor region back to the original space.
+
+        Parameters:
+            extracted_label_numeric (ndarray): The binary mask of the currently analyzed tumor region.
+            original_shape (tuple): The original shape of the label data.
+            original_spacing (tuple): The original spacing of the label data.
+            current_shape (tuple): The current shape of the extracted region.
+            current_spacing (tuple): The current spacing of the extracted region.
+
+        Returns:
+            ndarray: The binary mask of the tumor region mapped back to the original space.
+        """
+        # Calculate scaling factors
+        scale_factors = [o / c for o, c in zip(original_spacing, current_spacing)]
+
+        # Resize the extracted label to match the original shape
+        resized_label = TumorAnalyzer.resize_mask(extracted_label_numeric, original_shape)
+
+        # Create grid for interpolation
+        x_old, y_old, z_old = np.indices(original_shape)
+        x_new, y_new, z_new = np.indices(current_shape)
+
+        # Scale indices back to original space
+        x_old_scaled = x_new * scale_factors[0]
+        y_old_scaled = y_new * scale_factors[1]
+        z_old_scaled = z_new * scale_factors[2]
+
+        # Create interpolation function
+        interpolator = interpolate.RegularGridInterpolator(
+            (x_old_scaled.flatten(), y_old_scaled.flatten(), z_old_scaled.flatten()),
+            resized_label.flatten(), method='nearest', bounds_error=False, fill_value=0
+        )
+
+        # Interpolate label back to original space
+        label_in_original_space = interpolator((x_old.flatten(), y_old.flatten(), z_old.flatten()))
+
+        # Reshape back to original shape
+        label_in_original_space = label_in_original_space.reshape(original_shape)
+
+        return label_in_original_space
 
     @staticmethod
     def analyze_tumors(label_path, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
@@ -298,6 +342,10 @@ class TumorAnalyzer:
             filename = os.path.basename(label_path)
             label = nib.load(label_path)
             label_data = label.get_fdata()
+
+            original_shape = label_data.shape
+            pixdim = label_data.header['pixdim']
+            original_spacing = tuple(pixdim[1:4])
 
             organ_mask = TumorAnalyzer.crop_mask(label_data)
             organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
@@ -314,8 +362,13 @@ class TumorAnalyzer:
                 label_numeric, gt_N = ndimage.label(tumor_mask)
                 for segid in range(1, gt_N + 1):
                     extracted_label_numeric = np.uint8(label_numeric == segid)
-                    clot_size = np.sum(extracted_label_numeric)
-                    if clot_size < 8:
+                    # clot_size = np.sum(extracted_label_numeric)
+                    mapped_tumor_region = TumorAnalyzer.map_tumor_region_to_original_space(
+                        extracted_label_numeric, original_shape, original_spacing,
+                        extracted_label_numeric.shape, original_spacing
+                    )
+                    original_clot_size = np.sum(mapped_tumor_region)
+                    if original_clot_size < 8:
                         continue
                     center_of_mass = ndimage.measurements.center_of_mass(extracted_label_numeric)
                     if any(coord < 0 for coord in center_of_mass):
