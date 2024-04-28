@@ -23,8 +23,7 @@ class Tumor:
 
 class TumorAnalyzer:
     def __init__(self):
-        self.all_tumor_positions = None
-        self.all_tumor_types = None
+        self.all_tumors = None
         self.gmm_model = None
         self.gmm_flag = False
         self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
@@ -34,43 +33,42 @@ class TumorAnalyzer:
         self.unhealthy_mean_size = (282, 244, 143)
         self.target_volume = self.healthy_mean_size
 
-    def fit_gmm_model(self, train_data, val_data, optimal_components, max_iter=500, early_stopping=True, tol=0.00001,
+    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, max_iter=500, early_stopping=True, tol=0.00001,
                       patience=3):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
-        try:
-            self.gmm_model = GaussianMixture(
-                n_components=optimal_components,
-                covariance_type='full',
-                init_params='k-means++',
-                tol=tol,
-                max_iter=max_iter
-            )
+        train_position = np.array([tumor.position for tumor in train_tumors])
+        val_position = np.array([tumor.position for tumor in val_tumors])
 
-            best_score = float('-inf')
-            best_params = None
-            no_improvement_count = 0
+        self.gmm_model = GaussianMixture(
+            n_components=optimal_components,
+            covariance_type='full',
+            init_params='k-means++',
+            tol=tol,
+            max_iter=max_iter
+        )
 
-            for iter in range(max_iter):
-                self.gmm_model.fit(train_data)
-                val_score = self.gmm_model.score(val_data)
+        best_score = float('-inf')
+        best_params = None
+        no_improvement_count = 0
 
-                if val_score > best_score:
-                    best_score = val_score
-                    best_params = self.gmm_model.get_params()
-                    no_improvement_count = 0
-                else:
-                    no_improvement_count += 1
+        for iter in range(max_iter):
+            self.gmm_model.fit(train_position)
+            val_score = self.gmm_model.score(val_position)
 
-                if early_stopping and no_improvement_count >= patience:
-                    print("Validation score did not improve for {} iterations. Rolling back to best model.".format(
-                        patience))
-                    self.gmm_model.set_params(**best_params)
-                    break
+            if val_score > best_score:
+                best_score = val_score
+                best_params = self.gmm_model.get_params()
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
 
-        except Exception as e:
-            print("Error occurred while fitting GMM model:", e)
+            if early_stopping and no_improvement_count >= patience:
+                print("Validation score did not improve for {} iterations. Rolling back to best model.".format(
+                    patience))
+                self.gmm_model.set_params(**best_params)
+                break
 
     @staticmethod
     def process_file(ct_file, data_folder):
@@ -80,10 +78,8 @@ class TumorAnalyzer:
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
 
-        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 1, 2)
-        positions = [tumor.position for tumor in tumors]
-        types = [tumor.type for tumor in tumors]
-        return positions, types
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2)
+        return tumors
 
     def load_data(self, data_folder, parallel=False):
         """
@@ -98,48 +94,49 @@ class TumorAnalyzer:
         if len(ct_files) != expected_count:
             warnings.warn(f"Expected {expected_count} files after filtering, but found {len(ct_files)}.",
                           Warning)
+
+        tumors = []
         if parallel:
             with Pool() as pool:
-                positions, types = list(tqdm(pool.imap(TumorAnalyzer.process_file,
+                tumors = list(tqdm(pool.imap(TumorAnalyzer.process_file,
                                               [(ct_file, data_folder) for ct_file in ct_files]),
                                     total=len(ct_files), desc="Loading dataset"))
         else:
-            positions = []
-            types = []
             for ct_file in tqdm(ct_files, total=len(ct_files), desc="Loading dataset"):
-                p, t = TumorAnalyzer.process_file(ct_file, data_folder)
-                positions.append(p)
-                types.append(t)
+                tumors = TumorAnalyzer.process_file(ct_file, data_folder)
 
-        tumor_positions = [position for sublist in positions for position in sublist]
-        tumor_types = [type for sublist in types for type in sublist]
+        self.all_tumors = np.array(tumors)
 
-        self.all_tumor_positions = np.array(tumor_positions)
-        self.all_tumor_types = np.array(tumor_types)
+        total_tumors = len(self.all_tumors)
 
-        print("Number of tumor positions:", len(self.all_tumor_positions))
-        print("Number of tumor types:", len(self.all_tumor_types))
-        type_counts = {t: np.count_nonzero(self.all_tumor_types == t) for t in ['tiny', 'small', 'medium', 'large']}
+        type_counts = dict(zip(['tiny', 'small', 'medium', 'large'],
+                               np.sum(self.all_tumors[:, 1][:, None] == ['tiny', 'small', 'medium', 'large'], axis=0)))
+
+        type_ratios = {t: count / total_tumors for t, count in type_counts.items()}
+
+        print("Number of tumor positions:", total_tumors)
         print("Tumor type counts:", type_counts)
-        type_ratios = {t: count / len(self.all_tumor_types) for t, count in type_counts.items()}
         print("Tumor type ratios:", type_ratios)
 
     def split_train_val(self, test_size=0.2, random_state=42):
         """
         Splits the tumor positions into training and validation sets.
         """
-        train_data, val_data = train_test_split(self.all_tumor_positions, test_size=test_size, random_state=random_state)
-        return train_data, val_data
+        tumors = self.all_tumors
+        train_tumors, val_tumors = train_test_split(tumors, test_size=test_size, random_state=random_state)
 
-    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42):
+        return train_tumors, val_tumors
+
+    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42, mode='default'):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
         if not self.gmm_flag:
-            self.load_data(data_folder, parallel=False)
-            train_data, val_data = self.split_train_val(test_size=test_size, random_state=random_state)
-            self.fit_gmm_model(train_data, val_data, optimal_components, 500, True, 0.00001, 3)
-            self.gmm_flag = True
+            if mode == 'default':
+                self.load_data(data_folder, parallel=False)
+                train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
+                self.fit_gmm_model(train_tumors, val_tumors, optimal_components, 500, True, 0.00001, 3)
+                self.gmm_flag = True
 
     @staticmethod
     def analyze_tumor_type_helper(clot_size, spacing_mm):
@@ -183,9 +180,6 @@ class TumorAnalyzer:
                 raw_label = label.get_fdata()
 
                 tumor_mask = np.zeros_like(raw_label).astype(np.int16)
-                organ_mask = np.zeros_like(raw_label).astype(np.int16)
-                organ_mask[raw_label == 1] = 1
-                organ_mask[raw_label == 2] = 1
                 tumor_mask[raw_label == 2] = 1
 
                 if len(np.unique(tumor_mask)) > 1:
@@ -270,13 +264,12 @@ class TumorAnalyzer:
         return np.round(new_volume).astype(int)
 
     @staticmethod
-    def analyze_tumors(label_path, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
+    def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2):
         """
         Analyzes tumor information from label data.
         """
         file_name = os.path.basename(label_path)
         label = nib.load(label_path)
-        shape = label.shape
         pixdim = label.header['pixdim']
         spacing_mm = tuple(pixdim[1:4])
         label_data = label.get_fdata()
@@ -284,10 +277,7 @@ class TumorAnalyzer:
         organ_mask = TumorAnalyzer.crop_mask(label_data)
         organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
 
-        liver_mask = np.zeros_like(organ_mask).astype(np.int16)
         tumor_mask = np.zeros_like(organ_mask).astype(np.int16)
-        liver_mask[organ_mask == liver_label] = 1
-        liver_mask[organ_mask == tumor_label] = 1
         tumor_mask[organ_mask == tumor_label] = 1
 
         tumors = []
