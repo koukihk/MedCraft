@@ -1,21 +1,19 @@
-import os
 import glob
-from tqdm import tqdm
+import os
+import warnings
 from multiprocessing import Pool
 
 import nibabel as nib
 import numpy as np
 from scipy import interpolate
 from scipy import ndimage
-from scipy.optimize import least_squares
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
-from scipy.ndimage import map_coordinates
-from scipy.interpolate import RegularGridInterpolator
-from skimage.transform import PiecewiseAffineTransform, warp
+from tqdm import tqdm
+
 
 class Tumor:
-    def __init__(self, position, type=None, filename=None):
+    def __init__(self, position=None, type=None, filename=None):
         self.position = position   # relative position
         self.type = type           # one of ['tiny', 'small', 'medium', 'large']
         self.filename = filename   # liver_*.nii.gz
@@ -26,6 +24,7 @@ class Tumor:
 class TumorAnalyzer:
     def __init__(self):
         self.all_tumor_positions = None
+        self.all_tumor_types = None
         self.gmm_model = None
         self.gmm_flag = False
         self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
@@ -36,7 +35,7 @@ class TumorAnalyzer:
         self.target_volume = self.healthy_mean_size
 
     def fit_gmm_model(self, train_data, val_data, optimal_components, max_iter=500, early_stopping=True, tol=0.00001,
-                      patience=5):
+                      patience=3):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
@@ -74,51 +73,56 @@ class TumorAnalyzer:
             print("Error occurred while fitting GMM model:", e)
 
     @staticmethod
-    def process_file(ct_file, data_folder, healthy_ct):
-        try:
-            if ct_file.startswith("._"):
-                return []
+    def process_file(ct_file, data_folder):
+        img_path = os.path.join(data_folder, "img", ct_file)
+        label_path = os.path.join(data_folder, "label", ct_file)
 
-            img_path = os.path.join(data_folder, "img", ct_file)
-            label_path = os.path.join(data_folder, "label", ct_file)
+        if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
+            return [], []
 
-            ct_index = int(ct_file.split('_')[1].split('.')[0])
-            if ct_index in healthy_ct:
-                return []
-
-            if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
-                return []
-
-            tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 1, 2)
-            positions = [tumor.position for tumor in tumors]
-            return positions
-        except Exception as e:
-            print("Error occurred while processing file", ct_file, ":", e)
-            return []
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 1, 2)
+        positions = [tumor.position for tumor in tumors]
+        types = [tumor.type for tumor in tumors]
+        return positions, types
 
     def load_data(self, data_folder, parallel=False):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
-        try:
-            ct_files = sorted(os.listdir(os.path.join(data_folder, "img")))
+        ct_files = sorted(os.listdir(os.path.join(data_folder, "label")))
+        expected_count = len(ct_files) // 2 - len(self.healthy_ct)
+        ct_files = [ct_file for ct_file in ct_files
+                          if not ct_file.startswith("._")
+                          and int(ct_file.split('_')[1].split('.')[0]) not in self.healthy_ct]
 
-            if parallel:
-                with Pool() as pool:
-                    results = list(tqdm(pool.imap(TumorAnalyzer.process_file,
-                                                  [(ct_file, data_folder, self.healthy_ct) for ct_file in ct_files]),
-                                        total=len(ct_files), desc="Loading dataset"))
-            else:
-                results = []
-                for ct_file in tqdm(ct_files, total=len(ct_files), desc="Loading dataset"):
-                    result = TumorAnalyzer.process_file(ct_file, data_folder, self.healthy_ct)
-                    results.append(result)
+        if len(ct_files) != expected_count:
+            warnings.warn(f"Expected {expected_count} files after filtering, but found {len(ct_files)}.",
+                          Warning)
+        if parallel:
+            with Pool() as pool:
+                positions, types = list(tqdm(pool.imap(TumorAnalyzer.process_file,
+                                              [(ct_file, data_folder) for ct_file in ct_files]),
+                                    total=len(ct_files), desc="Loading dataset"))
+        else:
+            positions = []
+            types = []
+            for ct_file in tqdm(ct_files, total=len(ct_files), desc="Loading dataset"):
+                p, t = TumorAnalyzer.process_file(ct_file, data_folder)
+                positions.append(p)
+                types.append(t)
 
-            tumor_positions = [position for sublist in results for position in sublist]
+        tumor_positions = [position for sublist in positions for position in sublist]
+        tumor_types = [type for sublist in types for type in sublist]
 
-            self.all_tumor_positions = np.array(tumor_positions)
-        except Exception as e:
-            print("Error occurred while loading data:", e)
+        self.all_tumor_positions = np.array(tumor_positions)
+        self.all_tumor_types = np.array(tumor_types)
+
+        print("Number of tumor positions:", len(self.all_tumor_positions))
+        print("Number of tumor types:", len(self.all_tumor_types))
+        type_counts = {t: np.count_nonzero(self.all_tumor_types == t) for t in ['tiny', 'small', 'medium', 'large']}
+        print("Tumor type counts:", type_counts)
+        type_ratios = {t: count / len(self.all_tumor_types) for t, count in type_counts.items()}
+        print("Tumor type ratios:", type_ratios)
 
     def split_train_val(self, test_size=0.2, random_state=42):
         """
@@ -132,37 +136,10 @@ class TumorAnalyzer:
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
         if not self.gmm_flag:
-            try:
-                self.load_data(data_folder, parallel=False)
-                train_data, val_data = self.split_train_val(test_size=test_size, random_state=random_state)
-                self.fit_gmm_model(train_data, val_data, optimal_components, 500)
-                self.gmm_flag = True
-            except Exception as e:
-                print("Error occurred while loading data and fitting GMM model:", e)
-
-    @staticmethod
-    def fit_ellipsoid_center(extracted_label_numeric):
-        """
-        Fits an ellipsoid, and gets its center.
-        """
-        # Residual function to minimize
-        def residual(params):
-            cx, cy, cz, a, b, c = params
-            distances = np.sqrt(((x - cx) / a) ** 2 + ((y - cy) / b) ** 2 + ((z - cz) / c) ** 2) - 1
-            return distances
-
-        # Get coordinates of tumor voxels
-        x, y, z = np.where(extracted_label_numeric)
-
-        # Initial guess for the parameters of the ellipsoid (center and radii)
-        initial_guess = [np.mean(x), np.mean(y), np.mean(z), 1, 1, 1]
-
-        # Fit ellipsoid parameters
-        result = least_squares(residual, initial_guess)
-        # Extract center of the ellipsoid (which represents tumor position)
-        tumor_position = result.x[:3]
-
-        return tumor_position
+            self.load_data(data_folder, parallel=False)
+            train_data, val_data = self.split_train_val(test_size=test_size, random_state=random_state)
+            self.fit_gmm_model(train_data, val_data, optimal_components, 500, True, 0.00001, 3)
+            self.gmm_flag = True
 
     @staticmethod
     def analyze_tumor_type_helper(clot_size, spacing_mm):
@@ -293,98 +270,43 @@ class TumorAnalyzer:
         return np.round(new_volume).astype(int)
 
     @staticmethod
-    def map_tumor_region_to_original_space(extracted_label_numeric, original_shape, original_spacing, current_shape,
-                                           current_spacing):
-        """
-        Maps the tumor region back to the original space using piecewise affine transformation.
-        """
-        # Calculate scaling factors
-        scale_factors = [o / c for o, c in zip(original_spacing, current_spacing)]
-
-        # Resize the extracted label to match the original shape
-        resized_label = TumorAnalyzer.resize_mask(extracted_label_numeric, original_shape)
-
-        # Create grid for interpolation
-        x_old, y_old, z_old = np.indices(original_shape)
-        x_new, y_new, z_new = np.indices(current_shape)
-
-        # Scale indices back to original space
-        x_old_scaled = x_new * scale_factors[0]
-        y_old_scaled = y_new * scale_factors[1]
-        z_old_scaled = z_new * scale_factors[2]
-
-        # Reshape to 1D arrays
-        x_old_scaled_flat = x_old_scaled.flatten()
-        y_old_scaled_flat = y_old_scaled.flatten()
-        z_old_scaled_flat = z_old_scaled.flatten()
-        resized_label_flat = resized_label.flatten()
-
-        # Create piecewise affine transformation
-        piecewise_transform = PiecewiseAffineTransform()
-        piecewise_transform.estimate(np.column_stack((x_old_scaled_flat, y_old_scaled_flat)),
-                                     np.column_stack((x_old.flatten(), y_old.flatten())))
-
-        # Apply piecewise affine transformation to z coordinate
-        z_transformed_flat = piecewise_transform(z_old_scaled_flat)
-
-        # Reshape transformed z coordinate
-        z_transformed = z_transformed_flat.reshape(current_shape)
-
-        # Perform nearest neighbor interpolation on the transformed z coordinate
-        mapped_tumor_region = map_coordinates(resized_label_flat.reshape(original_shape),
-                                               [x_old_scaled_flat, y_old_scaled_flat, z_transformed_flat],
-                                               order=0, mode='nearest').reshape(original_shape)
-
-        return mapped_tumor_region
-
-    @staticmethod
     def analyze_tumors(label_path, target_volume=(287, 242, 154), liver_label=1, tumor_label=2):
         """
         Analyzes tumor information from label data.
         """
-        try:
-            file_name = os.path.basename(label_path)
-            label = nib.load(label_path)
-            shape = label.shape
-            pixdim = label.header['pixdim']
-            spacing_mm = tuple(pixdim[1:4])
-            label_data = label.get_fdata()
+        file_name = os.path.basename(label_path)
+        label = nib.load(label_path)
+        shape = label.shape
+        pixdim = label.header['pixdim']
+        spacing_mm = tuple(pixdim[1:4])
+        label_data = label.get_fdata()
 
-            organ_mask = TumorAnalyzer.crop_mask(label_data)
-            organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
+        organ_mask = TumorAnalyzer.crop_mask(label_data)
+        organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
 
-            liver_mask = np.zeros_like(organ_mask).astype(np.int16)
-            tumor_mask = np.zeros_like(organ_mask).astype(np.int16)
-            liver_mask[organ_mask == liver_label] = 1
-            liver_mask[organ_mask == tumor_label] = 1
-            tumor_mask[organ_mask == tumor_label] = 1
+        liver_mask = np.zeros_like(organ_mask).astype(np.int16)
+        tumor_mask = np.zeros_like(organ_mask).astype(np.int16)
+        liver_mask[organ_mask == liver_label] = 1
+        liver_mask[organ_mask == tumor_label] = 1
+        tumor_mask[organ_mask == tumor_label] = 1
 
-            tumors = []
+        tumors = []
 
-            if len(np.unique(tumor_mask)) > 1:
-                label_numeric, gt_N = ndimage.label(tumor_mask)
-                for segid in range(1, gt_N + 1):
-                    extracted_label_numeric = np.uint8(label_numeric == segid)
-                    # clot_size = np.sum(extracted_label_numeric)
-                    mapped_tumor_region = TumorAnalyzer.map_tumor_region_to_original_space(
-                        extracted_label_numeric, shape, spacing_mm,
-                        extracted_label_numeric.shape, spacing_mm
-                    )
-                    original_clot_size = np.sum(mapped_tumor_region)
-                    if original_clot_size < 8:
-                        continue
-                    position = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                    if any(coord < 0 for coord in position):
-                        continue
-                    type = TumorAnalyzer.analyze_tumor_type_helper(original_clot_size, spacing_mm)
-                    tumor = Tumor(position=position, type=type, filename=file_name)
-                    tumors.append(tumor)
+        if len(np.unique(tumor_mask)) > 1:
+            label_numeric, gt_N = ndimage.label(tumor_mask)
+            for segid in range(1, gt_N + 1):
+                extracted_label_numeric = np.uint8(label_numeric == segid)
+                clot_size = np.sum(extracted_label_numeric)
+                if clot_size < 8:
+                    continue
+                position = ndimage.measurements.center_of_mass(extracted_label_numeric)
+                if any(coord < 0 for coord in position):
+                    continue
+                type = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
+                tumor = Tumor(position=position, type=type, filename=file_name)
+                tumors.append(tumor)
 
-            return tumors
-
-        except Exception as e:
-            print("Error occurred while analyzing tumors:", e)
-            return []
+        return tumors
 
     def get_gmm_model(self):
         """
