@@ -95,28 +95,33 @@ class TumorAnalyzer:
             warnings.warn(f"Expected {expected_count} files after filtering, but found {len(ct_files)}.",
                           Warning)
 
-        tumors = []
+        all_tumors = []
         if parallel:
             with Pool() as pool:
-                tumors = list(tqdm(pool.imap(TumorAnalyzer.process_file,
-                                              [(ct_file, data_folder) for ct_file in ct_files]),
-                                    total=len(ct_files), desc="Loading dataset"))
+                all_tumors.extend(tqdm(pool.imap(TumorAnalyzer.process_file,
+                                                 [(ct_file, data_folder) for ct_file in ct_files]),
+                                       total=len(ct_files), desc="Processing dataset"))
         else:
-            for ct_file in tqdm(ct_files, total=len(ct_files), desc="Loading dataset"):
+            for ct_file in tqdm(ct_files, total=len(ct_files), desc="Processing dataset"):
                 tumors = TumorAnalyzer.process_file(ct_file, data_folder)
+                all_tumors.extend(tumors)
 
-        self.all_tumors = np.array(tumors)
+        self.all_tumors = all_tumors
 
-        total_tumors = len(self.all_tumors)
+        tumor_count = len(all_tumors)
+        type_count = {'tiny': 0, 'small': 0, 'medium': 0, 'large': 0}
 
-        type_counts = dict(zip(['tiny', 'small', 'medium', 'large'],
-                               np.sum(self.all_tumors[:, 1][:, None] == ['tiny', 'small', 'medium', 'large'], axis=0)))
+        for tumor in all_tumors:
+            type_count[tumor.type] += 1
+        type_proportions = {tumor_type: count / tumor_count for tumor_type, count in type_count.items()}
 
-        type_ratios = {t: count / total_tumors for t, count in type_counts.items()}
-
-        print("Number of tumor positions:", total_tumors)
-        print("Tumor type counts:", type_counts)
-        print("Tumor type ratios:", type_ratios)
+        print("Total number of tumors:", tumor_count)
+        print("Tumor counts by type:")
+        for tumor_type, count in type_count.items():
+            print(f"{tumor_type}: {count}")
+        print("Tumor type proportions:")
+        for tumor_type, proportion in type_proportions.items():
+            print(f"{tumor_type}: {proportion:.2%}")
 
     def split_train_val(self, test_size=0.2, random_state=42):
         """
@@ -287,13 +292,13 @@ class TumorAnalyzer:
             for segid in range(1, gt_N + 1):
                 extracted_label_numeric = np.uint8(label_numeric == segid)
                 clot_size = np.sum(extracted_label_numeric)
-                if clot_size < 8:
+                if clot_size < 7:
                     continue
-                position = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                if any(coord < 0 for coord in position):
+                tumor_position = ndimage.measurements.center_of_mass(extracted_label_numeric)
+                if any(coord < 0 for coord in tumor_position):
                     continue
-                type = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
-                tumor = Tumor(position=position, type=type, filename=file_name)
+                tumor_type, _, _ = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
+                tumor = Tumor(position=tumor_position, type=tumor_type, filename=file_name)
                 tumors.append(tumor)
 
         return tumors
