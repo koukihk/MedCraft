@@ -1,5 +1,6 @@
 import glob
 import os
+import random
 import warnings
 from multiprocessing import Pool
 
@@ -33,8 +34,8 @@ class TumorAnalyzer:
         self.unhealthy_mean_size = (282, 244, 143)
         self.target_volume = self.healthy_mean_size
 
-    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, max_iter=500, early_stopping=True, tol=0.00001,
-                      patience=3):
+    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, max_iter=500, early_stopping=True,
+                      tol=0.00001, patience=3):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
@@ -81,7 +82,7 @@ class TumorAnalyzer:
         tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2)
         return tumors
 
-    def load_data(self, data_folder, parallel=False):
+    def load_data(self, data_folder, parallel=False, quick=False):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
@@ -94,6 +95,10 @@ class TumorAnalyzer:
         if len(ct_files) != expected_count:
             warnings.warn(f"Expected {expected_count} files after filtering, but found {len(ct_files)}.",
                           Warning)
+
+        if quick:
+            random.shuffle(ct_files)
+            ct_files = ct_files[:5]
 
         all_tumors = []
         if parallel:
@@ -138,7 +143,7 @@ class TumorAnalyzer:
         """
         if not self.gmm_flag:
             if mode == 'default':
-                self.load_data(data_folder, parallel=False)
+                self.load_data(data_folder, parallel=False, quick=False)
                 train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
                 self.fit_gmm_model(train_tumors, val_tumors, optimal_components, 500, True, 0.00001, 3)
                 self.gmm_flag = True
@@ -165,7 +170,8 @@ class TumorAnalyzer:
         return tumor_type, clot_size_mm, clot_size_mmR
 
     @staticmethod
-    def analyze_tumors_type(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/', file_reg='liver_*.nii.gz'):
+    def analyze_tumors_type(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/',
+                            file_reg='liver_*.nii.gz'):
         tumor_counts = {'tiny': 0, 'small': 0, 'medium': 0, 'large': 0}
         total_clot_size = []
         total_clot_size_mmR = []
@@ -194,7 +200,8 @@ class TumorAnalyzer:
                         clot_size = np.sum(extracted_label_numeric)
                         if clot_size < 8:
                             continue
-                        tumor_type, clot_size_mm ,clot_size_mmR = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
+                        tumor_type, clot_size_mm ,clot_size_mmR = TumorAnalyzer.analyze_tumor_type_helper(clot_size,
+                                                                                                          spacing_mm)
                         print('tumor clot_size_mmR', clot_size_mmR, 'tumor_type', tumor_type)
 
                         if tumor_type in tumor_counts:
@@ -273,8 +280,51 @@ class TumorAnalyzer:
         """
         Analyzes tumor information from label data.
         """
+
+        def map_tumor_to_original_space_with_spacing(extracted_label_numeric, original_shape, original_spacing,
+                                                     target_shape):
+            """
+            Maps the extracted tumor label back to the original mask space with consideration of physical spacing.
+
+            Parameters:
+                extracted_label_numeric (ndarray): The extracted tumor label.
+                original_shape (tuple): The original shape of the mask.
+                original_spacing (tuple): The original spacing of the mask.
+                target_shape (tuple): The shape of the target space.
+
+            Returns:
+                ndarray: A three-dimensional mask marking only the extracted tumor label, mapped back to the original space.
+            """
+            # Create grid for interpolation
+            x = np.linspace(0, target_shape[0] - 1, target_shape[0])
+            y = np.linspace(0, target_shape[1] - 1, target_shape[1])
+            z = np.linspace(0, target_shape[2] - 1, target_shape[2])
+
+            new_x = np.linspace(0, original_shape[0] - 1, original_shape[0])
+            new_y = np.linspace(0, original_shape[1] - 1, original_shape[1])
+            new_z = np.linspace(0, original_shape[2] - 1, original_shape[2])
+
+            # Convert coordinates to physical space
+            new_x_phys = new_x * original_spacing[0]
+            new_y_phys = new_y * original_spacing[1]
+            new_z_phys = new_z * original_spacing[2]
+
+            # Create interpolation function
+            interpolator = interpolate.RegularGridInterpolator((x, y, z), extracted_label_numeric, method='nearest',
+                                                               bounds_error=False, fill_value=0)
+
+            # Interpolate label back to original space
+            mapped_label = interpolator(
+                (new_x_phys[:, None, None], new_y_phys[None, :, None], new_z_phys[None, None, :]))
+
+            # Threshold to get binary mask
+            mapped_label_binary = (mapped_label > 0.5).astype(int)
+
+            return mapped_label_binary
+
         file_name = os.path.basename(label_path)
         label = nib.load(label_path)
+        shape = label.shape
         pixdim = label.header['pixdim']
         spacing_mm = tuple(pixdim[1:4])
         label_data = label.get_fdata()
@@ -291,8 +341,11 @@ class TumorAnalyzer:
             label_numeric, gt_N = ndimage.label(tumor_mask)
             for segid in range(1, gt_N + 1):
                 extracted_label_numeric = np.uint8(label_numeric == segid)
-                clot_size = np.sum(extracted_label_numeric)
-                if clot_size < 7:
+                mapped_label_binary = map_tumor_to_original_space_with_spacing(extracted_label_numeric, shape,
+                                                                               spacing_mm, target_volume)
+                # clot_size = np.sum(extracted_label_numeric)
+                clot_size = np.sum(mapped_label_binary)
+                if clot_size < 8:
                     continue
                 tumor_position = ndimage.measurements.center_of_mass(extracted_label_numeric)
                 if any(coord < 0 for coord in tumor_position):
