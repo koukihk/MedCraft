@@ -27,6 +27,9 @@ class TumorAnalyzer:
     def __init__(self):
         self.all_tumors = None
         self.gmm_model = None
+        self.gmm_model_global = None
+        self.gmm_model_tiny = None
+        self.gmm_model_non_tiny = None
         self.gmm_flag = False
         self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
         self.healthy_median_size = (253, 215, 162)
@@ -125,9 +128,8 @@ class TumorAnalyzer:
         print("Tumor counts by type:")
         for tumor_type, count in type_count.items():
             print(f"{tumor_type}: {count}")
-        print("Tumor type proportions:")
-        for tumor_type, proportion in type_proportions.items():
-            print(f"{tumor_type}: {proportion:.2%}")
+        print("Tumor type proportions:",
+              ", ".join([f"{tumor_type}: {proportion:.2%}" for tumor_type, proportion in type_proportions.items()]))
 
     def split_train_val(self, test_size=0.2, random_state=42):
         """
@@ -138,15 +140,32 @@ class TumorAnalyzer:
 
         return train_tumors, val_tumors
 
-    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42, mode='default'):
+    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42, mode='global'):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
         if not self.gmm_flag:
-            if mode == 'default':
+            if mode == 'global':
+                print(f'use global mode: {optimal_components}')
                 self.load_data(data_folder, parallel=False, quick=False)
                 train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
-                self.fit_gmm_model(train_tumors, val_tumors, optimal_components, 500, True, 0.00001, 3)
+                self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 500, True, 0.00001, 3)
+                self.gmm_model_global = self.gmm_model
+                self.gmm_flag = True
+            elif mode == 'split':
+                print(f'use split mode: {optimal_components}')
+                self.load_data(data_folder, parallel=False, quick=False)
+                all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
+                all_non_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type != 'tiny']
+                train_tiny_tumors, val_tiny_tumors = train_test_split(all_tiny_tumors, test_size=test_size,
+                                                                      random_state=random_state)
+                train_non_tiny_tumors, val_non_tiny_tumors = train_test_split(all_non_tiny_tumors, test_size=test_size,
+                                                                              random_state=random_state)
+                self.fit_gmm_model(train_tiny_tumors, val_tiny_tumors, optimal_components[0], 500, True, 0.00001, 3)
+                self.gmm_model_tiny = self.gmm_model
+                self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[1], 500, True, 0.00001,
+                                   3)
+                self.gmm_model_non_tiny = self.gmm_model
                 self.gmm_flag = True
 
     @staticmethod
@@ -359,8 +378,13 @@ class TumorAnalyzer:
 
         return tumors
 
-    def get_gmm_model(self):
+    def get_gmm_model(self, model_type='global'):
         """
         Returns the trained GMM model.
         """
-        return self.gmm_model
+        if model_type == 'tiny' and self.gmm_model_tiny is not None:
+            return self.gmm_model_tiny
+        elif model_type == 'non_tiny' and self.gmm_model_non_tiny is not None:
+            return self.gmm_model_non_tiny
+        else:
+            return self.gmm_model_global
