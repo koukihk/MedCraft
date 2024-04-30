@@ -79,7 +79,7 @@ class TumorAnalyzer:
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
 
-        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2)
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, False)
         return tumors
 
     def load_data(self, data_folder, parallel=False, quick=False):
@@ -276,12 +276,12 @@ class TumorAnalyzer:
         return np.round(new_volume).astype(int)
 
     @staticmethod
-    def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2):
+    def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2, mapper=False):
         """
         Analyzes tumor information from label data.
         """
 
-        def map_tumor_to_original_space_with_spacing(extracted_label_numeric, original_shape, original_spacing,
+        def tumor_mapper(extracted_label_numeric, original_shape, original_spacing,
                                                      target_shape):
             """
             Maps the extracted tumor label back to the original mask space with consideration of physical spacing.
@@ -341,10 +341,12 @@ class TumorAnalyzer:
             label_numeric, gt_N = ndimage.label(tumor_mask)
             for segid in range(1, gt_N + 1):
                 extracted_label_numeric = np.uint8(label_numeric == segid)
-                mapped_label_binary = map_tumor_to_original_space_with_spacing(extracted_label_numeric, shape,
-                                                                               spacing_mm, target_volume)
-                # clot_size = np.sum(extracted_label_numeric)
-                clot_size = np.sum(mapped_label_binary)
+                if mapper:
+                    mapped_label_binary = tumor_mapper(extracted_label_numeric, shape,
+                                                                                   spacing_mm, target_volume)
+                    clot_size = np.sum(mapped_label_binary)
+                else:
+                    clot_size = np.sum(extracted_label_numeric)
                 if clot_size < 8:
                     continue
                 tumor_position = ndimage.measurements.center_of_mass(extracted_label_numeric)
