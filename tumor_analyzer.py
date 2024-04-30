@@ -15,12 +15,13 @@ from tqdm import tqdm
 
 class Tumor:
     def __init__(self, position=None, type=None, filename=None):
-        self.position = position   # relative position
-        self.type = type           # one of ['tiny', 'small', 'medium', 'large']
-        self.filename = filename   # liver_*.nii.gz
+        self.position = position  # relative position
+        self.type = type  # one of ['tiny', 'small', 'medium', 'large']
+        self.filename = filename  # liver_*.nii.gz
 
     def __repr__(self):
         return f"Tumor(position={self.position}, type={self.type}, filename={self.filename})"
+
 
 class TumorAnalyzer:
     def __init__(self):
@@ -89,8 +90,8 @@ class TumorAnalyzer:
         ct_files = sorted(os.listdir(os.path.join(data_folder, "label")))
         expected_count = len(ct_files) // 2 - len(self.healthy_ct)
         ct_files = [ct_file for ct_file in ct_files
-                          if not ct_file.startswith("._")
-                          and int(ct_file.split('_')[1].split('.')[0]) not in self.healthy_ct]
+                    if not ct_file.startswith("._")
+                    and int(ct_file.split('_')[1].split('.')[0]) not in self.healthy_ct]
 
         if len(ct_files) != expected_count:
             warnings.warn(f"Expected {expected_count} files after filtering, but found {len(ct_files)}.",
@@ -200,7 +201,7 @@ class TumorAnalyzer:
                         clot_size = np.sum(extracted_label_numeric)
                         if clot_size < 8:
                             continue
-                        tumor_type, clot_size_mm ,clot_size_mmR = TumorAnalyzer.analyze_tumor_type_helper(clot_size,
+                        tumor_type, clot_size_mm, clot_size_mmR = TumorAnalyzer.analyze_tumor_type_helper(clot_size,
                                                                                                           spacing_mm)
                         print('tumor clot_size_mmR', clot_size_mmR, 'tumor_type', tumor_type)
 
@@ -281,8 +282,7 @@ class TumorAnalyzer:
         Analyzes tumor information from label data.
         """
 
-        def tumor_mapper(extracted_label_numeric, original_shape, original_spacing,
-                                                     target_shape):
+        def tumor_mapper(extracted_label_numeric, original_shape, original_spacing, target_shape):
             """
             Maps the extracted tumor label back to the original mask space with consideration of physical spacing.
 
@@ -296,13 +296,13 @@ class TumorAnalyzer:
                 ndarray: A three-dimensional mask marking only the extracted tumor label, mapped back to the original space.
             """
             # Create grid for interpolation
-            x = np.linspace(0, target_shape[0] - 1, target_shape[0])
-            y = np.linspace(0, target_shape[1] - 1, target_shape[1])
-            z = np.linspace(0, target_shape[2] - 1, target_shape[2])
+            x = np.linspace(0, original_shape[0] - 1, target_shape[0])
+            y = np.linspace(0, original_shape[1] - 1, target_shape[1])
+            z = np.linspace(0, original_shape[2] - 1, target_shape[2])
 
-            new_x = np.linspace(0, original_shape[0] - 1, original_shape[0])
-            new_y = np.linspace(0, original_shape[1] - 1, original_shape[1])
-            new_z = np.linspace(0, original_shape[2] - 1, original_shape[2])
+            new_x = np.arange(original_shape[0])
+            new_y = np.arange(original_shape[1])
+            new_z = np.arange(original_shape[2])
 
             # Convert coordinates to physical space
             new_x_phys = new_x * original_spacing[0]
@@ -314,8 +314,9 @@ class TumorAnalyzer:
                                                                bounds_error=False, fill_value=0)
 
             # Interpolate label back to original space
-            mapped_label = interpolator(
-                (new_x_phys[:, None, None], new_y_phys[None, :, None], new_z_phys[None, None, :]))
+            mesh = np.meshgrid(new_x_phys, new_y_phys, new_z_phys, indexing='ij')
+            points = np.vstack((mesh[0].flatten(), mesh[1].flatten(), mesh[2].flatten())).T
+            mapped_label = interpolator(points).reshape(original_shape)
 
             # Threshold to get binary mask
             mapped_label_binary = (mapped_label > 0.5).astype(int)
@@ -343,7 +344,7 @@ class TumorAnalyzer:
                 extracted_label_numeric = np.uint8(label_numeric == segid)
                 if mapper:
                     mapped_label_binary = tumor_mapper(extracted_label_numeric, shape,
-                                                                                   spacing_mm, target_volume)
+                                                       spacing_mm, target_volume)
                     clot_size = np.sum(mapped_label_binary)
                 else:
                     clot_size = np.sum(extracted_label_numeric)
