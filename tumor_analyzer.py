@@ -83,7 +83,7 @@ class TumorAnalyzer:
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
 
-        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, False)
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, True)
         return tumors
 
     def load_data(self, data_folder, parallel=False, quick=False):
@@ -125,9 +125,8 @@ class TumorAnalyzer:
         type_proportions = {tumor_type: count / tumor_count for tumor_type, count in type_count.items()}
 
         print("Total number of tumors:", tumor_count)
-        print("Tumor counts by type:")
-        for tumor_type, count in type_count.items():
-            print(f"{tumor_type}: {count}")
+        print("Tumor counts by type: " + ", ".join(
+            [f"{tumor_type}: {count}" for tumor_type, count in type_count.items()]))
         print("Tumor type proportions:",
               ", ".join([f"{tumor_type}: {proportion:.2%}" for tumor_type, proportion in type_proportions.items()]))
 
@@ -301,55 +300,44 @@ class TumorAnalyzer:
         Analyzes tumor information from label data.
         """
 
-        def tumor_mapper(extracted_label_numeric, original_shape, original_spacing, target_shape):
-            """
-            Maps the extracted tumor label back to the original mask space with consideration of physical spacing.
+        def tumor_mapper(origin_tumor_mask, tumor_mask):
+            origin_label_numeric, origin_gt_N = ndimage.label(origin_tumor_mask)
+            label_numeric, gt_N = ndimage.label(tumor_mask)
 
-            Parameters:
-                extracted_label_numeric (ndarray): The extracted tumor label.
-                original_shape (tuple): The original shape of the mask.
-                original_spacing (tuple): The original spacing of the mask.
-                target_shape (tuple): The shape of the target space.
+            tumor_mapping = {}
 
-            Returns:
-                ndarray: A three-dimensional mask marking only the extracted tumor label, mapped back to the original space.
-            """
-            # Create grid for interpolation
-            x = np.linspace(0, original_shape[0] - 1, target_shape[0])
-            y = np.linspace(0, original_shape[1] - 1, target_shape[1])
-            z = np.linspace(0, original_shape[2] - 1, target_shape[2])
+            for i in range(1, gt_N + 1):
+                target_tumor_region = (label_numeric == i)
 
-            new_x = np.arange(original_shape[0])
-            new_y = np.arange(original_shape[1])
-            new_z = np.arange(original_shape[2])
+                target_center = np.array(ndimage.center_of_mass(target_tumor_region))
 
-            # Convert coordinates to physical space
-            new_x_phys = new_x * original_spacing[0]
-            new_y_phys = new_y * original_spacing[1]
-            new_z_phys = new_z * original_spacing[2]
+                min_distance = np.inf
+                corresponding_region = None
 
-            # Create interpolation function
-            interpolator = interpolate.RegularGridInterpolator((x, y, z), extracted_label_numeric, method='nearest',
-                                                               bounds_error=False, fill_value=0)
+                for j in range(1, origin_gt_N + 1):
+                    origin_tumor_region = (origin_label_numeric == j)
 
-            # Interpolate label back to original space
-            mesh = np.meshgrid(new_x_phys, new_y_phys, new_z_phys, indexing='ij')
-            points = np.vstack((mesh[0].flatten(), mesh[1].flatten(), mesh[2].flatten())).T
-            mapped_label = interpolator(points).reshape(original_shape)
+                    origin_center = np.array(ndimage.center_of_mass(origin_tumor_region))
 
-            # Threshold to get binary mask
-            mapped_label_binary = (mapped_label > 0.5).astype(int)
+                    distance = np.linalg.norm(target_center - origin_center)
 
-            return mapped_label_binary
+                    if distance < min_distance:
+                        min_distance = distance
+                        corresponding_region = j
+
+                tumor_mapping[i] = corresponding_region
+
+            return tumor_mapping
 
         file_name = os.path.basename(label_path)
         label = nib.load(label_path)
-        shape = label.shape
         pixdim = label.header['pixdim']
         spacing_mm = tuple(pixdim[1:4])
         label_data = label.get_fdata()
 
         organ_mask = TumorAnalyzer.crop_mask(label_data)
+        origin_tumor_mask = np.zeros_like(organ_mask).astype(np.int16)
+        origin_tumor_mask[organ_mask == tumor_label] = 1
         organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
 
         tumor_mask = np.zeros_like(organ_mask).astype(np.int16)
@@ -358,15 +346,19 @@ class TumorAnalyzer:
         tumors = []
 
         if len(np.unique(tumor_mask)) > 1:
+            tumor_mapping = None
+            if mapper:
+                tumor_mapping = tumor_mapper(origin_tumor_mask, tumor_mask)
             label_numeric, gt_N = ndimage.label(tumor_mask)
             for segid in range(1, gt_N + 1):
                 extracted_label_numeric = np.uint8(label_numeric == segid)
-                if mapper:
-                    mapped_label_binary = tumor_mapper(extracted_label_numeric, shape,
-                                                       spacing_mm, target_volume)
-                    clot_size = np.sum(mapped_label_binary)
+
+                if mapper and tumor_mapping is not None:
+                    origin_extracted_label_numeric = tumor_mapping[segid]
+                    clot_size = np.sum(origin_extracted_label_numeric)
                 else:
                     clot_size = np.sum(extracted_label_numeric)
+
                 if clot_size < 8:
                     continue
                 tumor_position = ndimage.measurements.center_of_mass(extracted_label_numeric)
