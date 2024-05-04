@@ -83,7 +83,7 @@ class TumorAnalyzer:
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
 
-        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, True)
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, False)
         return tumors
 
     def load_data(self, data_folder, parallel=False, quick=False):
@@ -307,7 +307,7 @@ class TumorAnalyzer:
             tumor_mapping = {}
 
             for i in range(1, gt_N + 1):
-                target_tumor_region = (label_numeric == i)
+                target_tumor_region = np.uint8(label_numeric == i)
 
                 target_center = np.array(ndimage.center_of_mass(target_tumor_region))
 
@@ -315,7 +315,7 @@ class TumorAnalyzer:
                 corresponding_region = None
 
                 for j in range(1, origin_gt_N + 1):
-                    origin_tumor_region = (origin_label_numeric == j)
+                    origin_tumor_region = np.uint8(origin_label_numeric == j)
 
                     origin_center = np.array(ndimage.center_of_mass(origin_tumor_region))
 
