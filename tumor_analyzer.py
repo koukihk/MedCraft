@@ -142,14 +142,14 @@ class TumorAnalyzer:
         if not self.gmm_flag:
             if mode == 'global':
                 print(f'use global mode: {optimal_components}')
-                self.load_data(data_folder, parallel=False, quick=False)
+                self.load_data(data_folder, parallel=False)
                 train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
                 self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 500, True, 0.00001, 3)
                 self.gmm_model_global = self.gmm_model
                 self.gmm_flag = True
             elif mode == 'split':
                 print(f'use split mode: {optimal_components}')
-                self.load_data(data_folder, parallel=False, quick=False)
+                self.load_data(data_folder, parallel=False)
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
                 all_non_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type != 'tiny']
                 train_tiny_tumors, val_tiny_tumors = train_test_split(all_tiny_tumors, test_size=test_size,
@@ -179,8 +179,6 @@ class TumorAnalyzer:
                 file_name = os.path.basename(label_path)
 
                 label = nib.load(label_path)
-                pixdim = label.header['pixdim']
-                spacing_mm = tuple(pixdim[1:4])
                 raw_label = label.get_fdata()
 
                 tumor_mask = np.zeros_like(raw_label).astype(np.int16)
