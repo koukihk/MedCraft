@@ -54,26 +54,30 @@ class TumorAnalyzer:
             max_iter=max_iter
         )
 
-        best_score = float('-inf')
-        best_params = None
-        no_improvement_count = 0
+        if early_stopping:
+            best_score = float('-inf')
+            best_params = None
+            no_improvement_count = 0
 
-        for iter in range(max_iter):
+            for iter in range(max_iter):
+                self.gmm_model.fit(train_position)
+                val_score = self.gmm_model.score(val_position)
+
+                if val_score > best_score:
+                    best_score = val_score
+                    best_params = self.gmm_model.get_params()
+                    no_improvement_count = 0
+                else:
+                    no_improvement_count += 1
+
+                if early_stopping and no_improvement_count >= patience:
+                    print("Validation score did not improve for {} iterations. Rolling back to best model.".format(
+                        patience))
+                    self.gmm_model.set_params(**best_params)
+                    break
+        else:
+            train_position = np.concatenate((train_position, val_position))
             self.gmm_model.fit(train_position)
-            val_score = self.gmm_model.score(val_position)
-
-            if val_score > best_score:
-                best_score = val_score
-                best_params = self.gmm_model.get_params()
-                no_improvement_count = 0
-            else:
-                no_improvement_count += 1
-
-            if early_stopping and no_improvement_count >= patience:
-                print("Validation score did not improve for {} iterations. Rolling back to best model.".format(
-                    patience))
-                self.gmm_model.set_params(**best_params)
-                break
 
     @staticmethod
     def process_file(ct_file, data_folder):
@@ -135,19 +139,20 @@ class TumorAnalyzer:
 
         return train_tumors, val_tumors
 
-    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42, mode='global'):
+    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42, split=False,
+                    early_stopping=True):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
         if not self.gmm_flag:
-            if mode == 'global':
-                print(f'use global mode: {optimal_components}')
+            if not split:
+                print(f'use default mode: {optimal_components}')
                 self.load_data(data_folder, parallel=False)
                 train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
-                self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 500, True, 0.00001, 3)
+                self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 500, early_stopping, 0.00001, 3)
                 self.gmm_model_global = self.gmm_model
                 self.gmm_flag = True
-            elif mode == 'split':
+            elif split:
                 print(f'use split mode: {optimal_components}')
                 self.load_data(data_folder, parallel=False)
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
@@ -156,11 +161,11 @@ class TumorAnalyzer:
                                                                       random_state=random_state)
                 train_non_tiny_tumors, val_non_tiny_tumors = train_test_split(all_non_tiny_tumors, test_size=test_size,
                                                                               random_state=random_state)
-                self.fit_gmm_model(train_tiny_tumors, val_tiny_tumors, optimal_components[0], 500, True, 0.00001, 3)
+                self.fit_gmm_model(train_tiny_tumors, val_tiny_tumors, optimal_components[0], 500,
+                                   early_stopping, 0.00001, 3)
                 self.gmm_model_tiny = self.gmm_model
-                self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[1], 500, True,
-                                   0.00001,
-                                   3)
+                self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[1], 500,
+                                   early_stopping,0.00001,3)
                 self.gmm_model_non_tiny = self.gmm_model
                 self.gmm_flag = True
 

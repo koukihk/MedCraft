@@ -35,7 +35,8 @@ parser.add_argument('--syn', action='store_true')  # use synthetic tumors for tr
 parser.add_argument('--gen', action='store_true')   # only for saving synthetic CT
 parser.add_argument('--gen_folder', default='normal')   # only for saving synthetic CT
 parser.add_argument('--gmm', action='store_true')   # use GMM for selecting tumor points
-parser.add_argument('--gmm_isSplit', action='store_true')
+parser.add_argument('--gmm_split', action='store_true')
+parser.add_argument('--gmm_es', action='store_true')
 parser.add_argument('--optimal_components', default='4', type=str)  # like '5,2'
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
@@ -372,14 +373,11 @@ def main_worker(gpu, args):
     gmm_list = []
     if args.gmm:
         start_time = time.time()
-        if args.gmm_isSplit:
-            mode = 'split'
-        else:
-            mode = 'global'
         optimal_components = np.array(args.optimal_components.split(',')).astype(int)
         analyzer = TumorAnalyzer()
-        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42, mode)  # here we use LiTS and you can modify it
-        if args.gmm_isSplit:
+        # here we use LiTS and you can modify it
+        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42, args.gmm_split, args.gmm_es)
+        if args.gmm_split:
             gmm_list.append(analyzer.get_gmm_model('tiny'))
             gmm_list.append(analyzer.get_gmm_model('non_tiny'))
         else:
@@ -389,8 +387,8 @@ def main_worker(gpu, args):
         print("GMM fixing execution time: {:.2f} s".format(duration))
 
     if args.distributed:
-        torch.multiprocessing.set_start_method('fork',
-                                               force=True)  # in new Pytorch/python labda functions fail to pickle with spawn
+        # in new Pytorch/python labda functions fail to pickle with spawn
+        torch.multiprocessing.set_start_method('fork', force=True)
     np.set_printoptions(formatter={'float': '{: 0.3f}'.format}, suppress=True)
 
     args.gpu = gpu
