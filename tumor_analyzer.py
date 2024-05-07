@@ -1,6 +1,5 @@
 import glob
 import os
-import random
 import warnings
 from multiprocessing import Pool
 
@@ -8,6 +7,7 @@ import nibabel as nib
 import numpy as np
 from scipy import interpolate
 from scipy import ndimage
+from scipy.spatial.distance import cdist
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -86,7 +86,7 @@ class TumorAnalyzer:
         tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, False)
         return tumors
 
-    def load_data(self, data_folder, parallel=False, quick=False):
+    def load_data(self, data_folder, parallel=False):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
@@ -99,10 +99,6 @@ class TumorAnalyzer:
         if len(ct_files) != expected_count:
             warnings.warn(f"Expected {expected_count} files after filtering, but found {len(ct_files)}.",
                           Warning)
-
-        if quick:
-            random.shuffle(ct_files)
-            ct_files = ct_files[:5]
 
         all_tumors = []
         if parallel:
@@ -169,6 +165,51 @@ class TumorAnalyzer:
                 self.gmm_flag = True
 
     @staticmethod
+    def analyze_tumors_shape(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/',
+                            file_reg='liver_*.nii.gz'):
+        label_paths = glob.glob(os.path.join(data_dir, file_reg))
+        label_paths.sort()
+
+        valid_ct_name = []
+
+        result_file = os.path.join(output_save_dir, 'tumor_shape_result.txt')
+        with open(result_file, 'w') as f:
+            for label_path in label_paths:
+                print('label_path', label_path)
+                file_name = os.path.basename(label_path)
+
+                label = nib.load(label_path)
+                pixdim = label.header['pixdim']
+                spacing_mm = tuple(pixdim[1:4])
+                raw_label = label.get_fdata()
+
+                tumor_mask = np.zeros_like(raw_label).astype(np.int16)
+                tumor_mask[raw_label == 2] = 1
+
+                if len(np.unique(tumor_mask)) > 1:
+                    label_numeric, gt_N = ndimage.label(tumor_mask)
+                    for segid in range(1, gt_N + 1):
+                        extracted_label_numeric = np.uint8(label_numeric == segid)
+                        clot_size = np.sum(extracted_label_numeric)
+                        if clot_size < 8:
+                            continue
+                        coords = np.array(np.where(extracted_label_numeric)).T
+                        centroid = np.mean(coords, axis=0)
+                        distances = cdist([centroid], coords)
+                        x_radius = np.max(distances[:, 0])
+                        y_radius = np.max(distances[:, 1])
+                        z_radius = np.max(distances[:, 2])
+
+                        print('Tumor Shape - X radius:', x_radius, 'Y radius:', y_radius, 'Z radius:', z_radius)
+                        f.write(f"Tumor Shape - X radius: {x_radius}, Y radius: {y_radius}, Z radius: {z_radius}\n")
+
+                    if not file_name in valid_ct_name:
+                        valid_ct_name.append(file_name)
+
+        with open(result_file, 'a') as f:
+            f.write(f"Valid_ct: {len(valid_ct_name)}\n")
+
+    @staticmethod
     def analyze_tumor_type_helper(clot_size, spacing_mm):
         def voxel2R(A):
             return (np.array(A) / 4 * 3 / np.pi) ** (1 / 3)
@@ -222,7 +263,7 @@ class TumorAnalyzer:
                             continue
                         tumor_type, clot_size_mm, clot_size_mmR = TumorAnalyzer.analyze_tumor_type_helper(clot_size,
                                                                                                           spacing_mm)
-                        print('tumor clot_size_mmR', clot_size_mmR, 'tumor_type', tumor_type)
+                        print('tumor_clot_size_mmR', clot_size_mmR, 'tumor_type', tumor_type)
 
                         if tumor_type in tumor_counts:
                             tumor_counts[tumor_type] += 1
@@ -302,43 +343,7 @@ class TumorAnalyzer:
         """
 
         def tumor_mapper(extracted_tumor, mask_shape, mask_spacing, liver_shape):
-            """
-            Maps the extracted tumor label back to the original mask space with consideration of physical spacing.
-
-            Parameters:
-                extracted_tumor (ndarray): The extracted tumor label.
-                mask_shape (tuple): The original shape of the mask.
-                mask_spacing (tuple): The original spacing of the mask.
-                liver_shape (tuple): The shape of the processed liver.
-
-            Returns:
-                ndarray: A three-dimensional mask marking only the extracted tumor, mapped back to the original space.
-            """
-            # Create grid for interpolation
-            x = np.linspace(0, liver_shape[0] - 1, liver_shape[0])
-            y = np.linspace(0, liver_shape[1] - 1, liver_shape[1])
-            z = np.linspace(0, liver_shape[2] - 1, liver_shape[2])
-
-            new_x = np.linspace(0, mask_shape[0] - 1, mask_shape[0])
-            new_y = np.linspace(0, mask_shape[1] - 1, mask_shape[1])
-            new_z = np.linspace(0, mask_shape[2] - 1, mask_shape[2])
-
-            # Convert coordinates to physical space
-            new_x_phys = new_x * mask_spacing[0]
-            new_y_phys = new_y * mask_spacing[1]
-            new_z_phys = new_z * mask_spacing[2]
-
-            # Create interpolation function
-            interpolator = interpolate.RegularGridInterpolator((x, y, z), extracted_tumor, method='nearest',
-                                                               bounds_error=False, fill_value=0)
-
-            # Interpolate label back to original space
-            mapped_label = interpolator(
-                (new_x_phys[:, None, None], new_y_phys[None, :, None], new_z_phys[None, None, :]))
-
-            # Threshold to get binary mask
-            mapped_label_binary = (mapped_label > 0.5).astype(int)
-
+            mapped_label_binary = extracted_tumor
             return mapped_label_binary
 
         file_name = os.path.basename(label_path)
