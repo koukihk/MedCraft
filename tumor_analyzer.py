@@ -1,8 +1,9 @@
 import glob
 import os
 import warnings
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
+import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 from scipy import interpolate
@@ -106,10 +107,16 @@ class TumorAnalyzer:
 
         all_tumors = []
         if parallel:
-            with Pool() as pool:
-                all_tumors.extend(tqdm(pool.imap(TumorAnalyzer.process_file,
-                                                 [(ct_file, data_folder) for ct_file in ct_files]),
-                                       total=len(ct_files), desc="Processing dataset"))
+            max_processes = min(cpu_count(), 4)
+            with Pool(max_processes) as pool:
+                results = []
+                for ct_file in ct_files:
+                    results.append(pool.apply_async(TumorAnalyzer.process_file, (ct_file, data_folder)))
+
+                for result in tqdm(results, total=len(results), desc="Processing dataset"):
+                    tumors = result.get()
+                    all_tumors.extend(tumors)
+
         else:
             for ct_file in tqdm(ct_files, total=len(ct_files), desc="Processing dataset"):
                 tumors = TumorAnalyzer.process_file(ct_file, data_folder)
@@ -139,22 +146,22 @@ class TumorAnalyzer:
 
         return train_tumors, val_tumors
 
-    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42, split=False,
-                    early_stopping=True):
+    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42,
+                    split=False, early_stopping=True, parallel=False):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
         if not self.gmm_flag:
             if not split:
                 print(f'use default mode: {optimal_components}')
-                self.load_data(data_folder, parallel=False)
+                self.load_data(data_folder, parallel=parallel)
                 train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
                 self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 500, early_stopping, 0.00001, 3)
                 self.gmm_model_global = self.gmm_model
                 self.gmm_flag = True
             elif split:
                 print(f'use split mode: {optimal_components}')
-                self.load_data(data_folder, parallel=False)
+                self.load_data(data_folder, parallel=parallel)
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
                 all_non_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type != 'tiny']
                 train_tiny_tumors, val_tiny_tumors = train_test_split(all_tiny_tumors, test_size=test_size,
@@ -345,13 +352,12 @@ class TumorAnalyzer:
         Analyzes tumor information from label data.
         """
 
-        def tumor_mapper(extracted_tumor, mask_shape, mask_spacing, liver_shape):
+        def tumor_mapper(extracted_tumor):
             mapped_label_binary = extracted_tumor
             return mapped_label_binary
 
         file_name = os.path.basename(label_path)
         label = nib.load(label_path)
-        shape = label.shape
         pixdim = label.header['pixdim']
         spacing_mm = tuple(pixdim[1:4])
         label_data = label.get_fdata()
@@ -369,8 +375,7 @@ class TumorAnalyzer:
             for segid in range(1, gt_N + 1):
                 extracted_label_numeric = np.uint8(label_numeric == segid)
                 if mapper:
-                    mapped_label_binary = tumor_mapper(extracted_label_numeric, shape,
-                                                       spacing_mm, target_volume)
+                    mapped_label_binary = tumor_mapper(extracted_label_numeric)
                     clot_size = np.sum(mapped_label_binary)
                 else:
                     clot_size = np.sum(extracted_label_numeric)
@@ -389,9 +394,39 @@ class TumorAnalyzer:
         """
         Returns the trained GMM model.
         """
-        if model_type == 'tiny' and self.gmm_model_tiny is not None:
-            return self.gmm_model_tiny
-        elif model_type == 'non_tiny' and self.gmm_model_non_tiny is not None:
-            return self.gmm_model_non_tiny
-        else:
-            return self.gmm_model_global
+        models = {
+            'tiny': self.gmm_model_tiny,
+            'non_tiny': self.gmm_model_non_tiny,
+            'global': self.gmm_model_global
+        }
+
+        return models.get(model_type)
+
+    def plot_gmm_3d(self, model_type='global'):
+        gmm_model = self.get_gmm_model(model_type)
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        colors = ['r', 'g', 'b', 'y', 'c', 'm']
+
+        for i in range(gmm_model.n_components):
+            mean = gmm_model.means_[i]
+            cov = gmm_model.covariances_[i]
+            eigenvalues, eigenvectors = np.linalg.eigh(cov)
+            scaled_eigenvectors = np.sqrt(eigenvalues) * eigenvectors
+            u = np.linspace(0, 2 * np.pi, 100)
+            v = np.linspace(0, np.pi, 100)
+            x = np.outer(np.cos(u), np.sin(v)) * scaled_eigenvectors[0, 0] + mean[0]
+            y = np.outer(np.sin(u), np.sin(v)) * scaled_eigenvectors[1, 0] + mean[1]
+            z = np.outer(np.ones(np.size(u)), np.cos(v)) * scaled_eigenvectors[2, 0] + mean[2]
+
+            color_index = i % len(colors)
+            ax.plot_surface(x, y, z, color=colors[color_index], alpha=0.5)
+
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('Gaussian Mixture Model Distribution')
+        plt.savefig(f'gmm_{model_type}_{gmm_model.n_components}.png')
+        plt.show()

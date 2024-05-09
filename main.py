@@ -376,7 +376,7 @@ def main_worker(gpu, args):
         optimal_components = np.array(args.optimal_components.split(',')).astype(int)
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
-        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42, args.gmm_split, args.gmm_es)
+        analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42, args.gmm_split, args.gmm_es, False)
         if args.gmm_split:
             gmm_list.append(analyzer.get_gmm_model('tiny'))
             gmm_list.append(analyzer.get_gmm_model('non_tiny'))
