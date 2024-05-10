@@ -37,6 +37,7 @@ class TumorAnalyzer:
         self.unhealthy_median_size = (378, 229, 107)
         self.healthy_mean_size = (287, 242, 154)
         self.unhealthy_mean_size = (282, 244, 143)
+        self.target_spacing = (0.86950004, 0.86950004, 0.923077)
         self.target_volume = self.healthy_mean_size
 
     def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, max_iter=500, early_stopping=True,
@@ -49,7 +50,7 @@ class TumorAnalyzer:
 
         self.gmm_model = GaussianMixture(
             n_components=optimal_components,
-            covariance_type='full',
+            covariance_type='diag',
             init_params='k-means++',
             tol=tol,
             max_iter=max_iter
@@ -107,7 +108,7 @@ class TumorAnalyzer:
 
         all_tumors = []
         if parallel:
-            max_processes = min(cpu_count(), 4)
+            max_processes = min(cpu_count(), 6)
             with Pool(max_processes) as pool:
                 results = []
                 for ct_file in ct_files:
@@ -172,7 +173,7 @@ class TumorAnalyzer:
                                    early_stopping, 0.00001, 3)
                 self.gmm_model_tiny = self.gmm_model
                 self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[1], 500,
-                                   early_stopping,0.00001,3)
+                                   early_stopping,0.00001, 3)
                 self.gmm_model_non_tiny = self.gmm_model
                 self.gmm_flag = True
 
@@ -321,24 +322,41 @@ class TumorAnalyzer:
         return liver_mask
 
     @staticmethod
-    def resize_mask(volume, new_shape):
+    def resize_mask(mask_scan, new_shape, target_spacing=(0.86950004, 0.86950004, 0.923077)):
         """
-        Resizes the volume on given shape.
+        Resizes the volume on given shape with target spacing.
         """
-        x_old, y_old, z_old = volume.shape
+        x_old, y_old, z_old = mask_scan.shape
         x_new, y_new, z_new = new_shape
+
+        # Compute current spacing
+        spacing_x = 1.0
+        spacing_y = 1.0
+        spacing_z = 1.0
+
+        if x_old > 1:
+            spacing_x = (x_old - 1) / (x_old - 1)
+        if y_old > 1:
+            spacing_y = (y_old - 1) / (y_old - 1)
+        if z_old > 1:
+            spacing_z = (z_old - 1) / (z_old - 1)
+
+        # Compute scaling factors for new spacing
+        scale_x = spacing_x / target_spacing[0]
+        scale_y = spacing_y / target_spacing[1]
+        scale_z = spacing_z / target_spacing[2]
 
         # Create grid for interpolation
         x = np.linspace(0, x_old - 1, x_old)
         y = np.linspace(0, y_old - 1, y_old)
         z = np.linspace(0, z_old - 1, z_old)
 
-        new_x = np.linspace(0, x_old - 1, x_new)
-        new_y = np.linspace(0, y_old - 1, y_new)
-        new_z = np.linspace(0, z_old - 1, z_new)
+        new_x = np.linspace(0, x_old - 1, int(x_new * scale_x))
+        new_y = np.linspace(0, y_old - 1, int(y_new * scale_y))
+        new_z = np.linspace(0, z_old - 1, int(z_new * scale_z))
 
         # Create interpolation function
-        interpolator = interpolate.RegularGridInterpolator((x, y, z), volume, method='nearest', bounds_error=False,
+        interpolator = interpolate.RegularGridInterpolator((x, y, z), mask_scan, method='nearest', bounds_error=False,
                                                            fill_value=0)
 
         # Interpolate volume
@@ -353,8 +371,7 @@ class TumorAnalyzer:
         """
 
         def tumor_mapper(extracted_tumor):
-            mapped_label_binary = extracted_tumor
-            return mapped_label_binary
+            return extracted_tumor
 
         file_name = os.path.basename(label_path)
         label = nib.load(label_path)
@@ -382,8 +399,8 @@ class TumorAnalyzer:
                 if clot_size < 8:
                     continue
                 tumor_position = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                if any(coord < 0 for coord in tumor_position):
-                    continue
+                # if any(coord < 0 for coord in tumor_position):
+                #     continue
                 tumor_type, _, _ = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
                 tumor = Tumor(position=tumor_position, type=tumor_type, filename=file_name)
                 tumors.append(tumor)
@@ -402,10 +419,10 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
-    def plot_gmm_3d(self, model_type='global'):
-        gmm_model = self.get_gmm_model(model_type)
-
-        fig = plt.figure()
+    @staticmethod
+    def gmm2plot(gmm_model):
+        # Create a new figure at the beginning of the function
+        fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot(111, projection='3d')
 
         colors = ['r', 'g', 'b', 'y', 'c', 'm']
@@ -428,5 +445,25 @@ class TumorAnalyzer:
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
         ax.set_title('Gaussian Mixture Model Distribution')
-        plt.savefig(f'gmm_{model_type}_{gmm_model.n_components}.png')
+
+        # Save the plot with a specific path
+        plt.savefig(f'gmm_{gmm_model.n_components}n.png')
+
+        # Show the plot
         plt.show()
+        
+    @staticmethod
+    def gmm2expression(gmm_model):
+        components = gmm_model.n_components
+        mus = gmm_model.means_.flatten()
+        print(gmm_model.covariances_)
+        sigmas = np.sqrt(gmm_model.covariances_.flatten())
+        pis = gmm_model.weights_
+
+        expression = "p(x) = "
+        for i in range(components):
+            expression += f"{pis[i]:.4f} * N(x | {mus[i]:.4f}, {sigmas[i] ** 2:.4f})"
+            if i < components - 1:
+                expression += " + "
+
+        return expression
