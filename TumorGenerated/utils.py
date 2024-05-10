@@ -131,14 +131,14 @@ def random_select_mod(mask_scan, gmm_model=None, max_attempts=600):
     y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
     z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
 
-    # liver_mask = mask_scan[x_start:x_end, y_start:y_end, z_start:z_end]
+    liver_mask = mask_scan[x_start:x_end, y_start:y_end, z_start:z_end]
     target_volume_shape = (287, 242, 154)
     start = (x_start, y_start, z_start)
 
     loop_count = 0
     while loop_count < max_attempts:
         potential_points = gmm_model.sample(1)[0][0]
-        potential_points = get_absolute_coordinates(potential_points, mask_scan.shape, target_volume_shape,
+        potential_points = get_absolute_coordinates(potential_points, liver_mask.shape, target_volume_shape,
                                                     start)
         potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_points)] == 1:

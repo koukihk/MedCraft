@@ -3,7 +3,6 @@ import os
 import warnings
 from multiprocessing import Pool, cpu_count
 
-import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 from scipy import interpolate
@@ -418,39 +417,6 @@ class TumorAnalyzer:
         }
 
         return models.get(model_type)
-
-    @staticmethod
-    def gmm2plot(gmm_model):
-        # Create a new figure at the beginning of the function
-        fig = plt.figure(figsize=(8, 6))
-        ax = fig.add_subplot(111, projection='3d')
-
-        colors = ['r', 'g', 'b', 'y', 'c', 'm']
-
-        for i in range(gmm_model.n_components):
-            mean = gmm_model.means_[i]
-            cov = gmm_model.covariances_[i]
-            eigenvalues, eigenvectors = np.linalg.eigh(cov)
-            scaled_eigenvectors = np.sqrt(eigenvalues) * eigenvectors
-            u = np.linspace(0, 2 * np.pi, 100)
-            v = np.linspace(0, np.pi, 100)
-            x = np.outer(np.cos(u), np.sin(v)) * scaled_eigenvectors[0, 0] + mean[0]
-            y = np.outer(np.sin(u), np.sin(v)) * scaled_eigenvectors[1, 0] + mean[1]
-            z = np.outer(np.ones(np.size(u)), np.cos(v)) * scaled_eigenvectors[2, 0] + mean[2]
-
-            color_index = i % len(colors)
-            ax.plot_surface(x, y, z, color=colors[color_index], alpha=0.5)
-
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_title('Gaussian Mixture Model Distribution')
-
-        # Save the plot with a specific path
-        plt.savefig(f'gmm_{gmm_model.n_components}n.png')
-
-        # Show the plot
-        plt.show()
         
     @staticmethod
     def gmm2expression(gmm_model):
