@@ -39,8 +39,8 @@ class TumorAnalyzer:
         self.target_spacing = (0.86950004, 0.86950004, 0.923077)
         self.target_volume = self.healthy_mean_size
 
-    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, max_iter=500, early_stopping=True,
-                      tol=0.00001, patience=3):
+    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, cov_type='tied', tol=0.00001, max_iter=500,
+                      early_stopping=True, patience=3):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
@@ -49,7 +49,7 @@ class TumorAnalyzer:
 
         self.gmm_model = GaussianMixture(
             n_components=optimal_components,
-            covariance_type='diag',
+            covariance_type=cov_type,
             init_params='k-means++',
             tol=tol,
             max_iter=max_iter
@@ -146,17 +146,19 @@ class TumorAnalyzer:
 
         return train_tumors, val_tumors
 
-    def gmm_starter(self, data_folder, optimal_components, test_size=0.2, random_state=42,
-                    split=False, early_stopping=True, parallel=False):
+    def gmm_starter(self, data_folder, optimal_components, split=False, early_stopping=True, parallel=False):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
         if not self.gmm_flag:
+            test_size = 0.2
+            random_state = 42
             if not split:
                 print(f'use default mode: {optimal_components}')
                 self.load_data(data_folder, parallel=parallel)
                 train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
-                self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 500, early_stopping, 0.00001, 3)
+                self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 'tied', 0.00001, 500,
+                                   early_stopping, 3)
                 self.gmm_model_global = self.gmm_model
                 self.gmm_flag = True
             elif split:
@@ -168,17 +170,17 @@ class TumorAnalyzer:
                                                                       random_state=random_state)
                 train_non_tiny_tumors, val_non_tiny_tumors = train_test_split(all_non_tiny_tumors, test_size=test_size,
                                                                               random_state=random_state)
-                self.fit_gmm_model(train_tiny_tumors, val_tiny_tumors, optimal_components[0], 500,
-                                   early_stopping, 0.00001, 3)
+                self.fit_gmm_model(train_tiny_tumors, val_tiny_tumors, optimal_components[0], 'tied', 0.00001, 500,
+                                   early_stopping, 3)
                 self.gmm_model_tiny = self.gmm_model
-                self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[1], 500,
-                                   early_stopping,0.00001, 3)
+                self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[0], 'tied', 0.00001,
+                                   500, early_stopping, 3)
                 self.gmm_model_non_tiny = self.gmm_model
                 self.gmm_flag = True
 
     @staticmethod
     def analyze_tumors_shape(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/',
-                            file_reg='liver_*.nii.gz'):
+                             file_reg='liver_*.nii.gz'):
         label_paths = glob.glob(os.path.join(data_dir, file_reg))
         label_paths.sort()
 
@@ -418,18 +420,4 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
-    @staticmethod
-    def gmm2expression(gmm_model):
-        components = gmm_model.n_components
-        mus = gmm_model.means_.flatten()
-        print(gmm_model.covariances_)
-        sigmas = np.sqrt(gmm_model.covariances_.flatten())
-        pis = gmm_model.weights_
 
-        expression = "p(x) = "
-        for i in range(components):
-            expression += f"{pis[i]:.4f} * N(x | {mus[i]:.4f}, {sigmas[i] ** 2:.4f})"
-            if i < components - 1:
-                expression += " + "
-
-        return expression
