@@ -4,6 +4,7 @@ import pickle
 import random
 import string
 from functools import partial
+import os
 from os import environ
 
 import nibabel as nb
@@ -381,6 +382,7 @@ def main_worker(gpu, args):
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
         analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42, args.gmm_split, args.gmm_es, True)
+        os.makedirs('gmm', exist_ok=True)
         if args.gmm_split:
             gmm_model_tiny = analyzer.get_gmm_model('tiny')
             gmm_model_non_tiny = analyzer.get_gmm_model('non_tiny')
