@@ -1,5 +1,8 @@
 import time
 import warnings
+import pickle
+import random
+import string
 from functools import partial
 from os import environ
 
@@ -32,9 +35,9 @@ import argparse
 parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')  # use synthetic tumors for training
-parser.add_argument('--gen', action='store_true')   # only for saving synthetic CT
-parser.add_argument('--gen_folder', default='normal')   # only for saving synthetic CT
-parser.add_argument('--gmm', action='store_true')   # use GMM for selecting tumor points
+parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
+parser.add_argument('--gen_folder', default='normal')  # only for saving synthetic CT
+parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_es', action='store_true')
 parser.add_argument('--optimal_components', default='4', type=str)  # like '5,2'
@@ -243,7 +246,6 @@ def optuna_run(args):
 
 
 def _get_transform(args, gmm_list=[]):
-
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -368,6 +370,8 @@ def main():
         else:
             main_worker(gpu=0, args=args)
 
+def generate_random_string(length=6):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 def main_worker(gpu, args):
     gmm_list = []
@@ -378,10 +382,26 @@ def main_worker(gpu, args):
         # here we use LiTS and you can modify it
         analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, 0.2, 42, args.gmm_split, args.gmm_es, True)
         if args.gmm_split:
-            gmm_list.append(analyzer.get_gmm_model('tiny'))
-            gmm_list.append(analyzer.get_gmm_model('non_tiny'))
+            gmm_model_tiny = analyzer.get_gmm_model('tiny')
+            gmm_model_non_tiny = analyzer.get_gmm_model('non_tiny')
+            gmm_list.extend([gmm_model_tiny, gmm_model_non_tiny])
+            idx_tiny, idx_non_tiny = optimal_components
+            random_string_tiny = generate_random_string()
+            random_string_non_tiny = generate_random_string()
+            with open(f'gmm/gmm_model_tiny_{idx_tiny}_{random_string_tiny}.pkl', 'wb') as f:
+                pickle.dump(gmm_model_tiny, f)
+                print(f"GMM saved successfully: gmm/gmm_model_tiny_{idx_tiny}_{random_string_tiny}.pkl")
+            with open(f'gmm/gmm_model_non_tiny_{idx_non_tiny}_{random_string_non_tiny}.pkl', 'wb') as f:
+                pickle.dump(gmm_model_non_tiny, f)
+                print(f"GMM saved successfully: gmm/gmm_model_non_tiny_{idx_non_tiny}_{random_string_non_tiny}.pkl")
         else:
-            gmm_list.append(analyzer.get_gmm_model('global'))
+            gmm_model = analyzer.get_gmm_model('global')
+            gmm_list.append(gmm_model)
+            idx = optimal_components[0]
+            random_string = generate_random_string()
+            with open(f'gmm/gmm_model_global_{idx}_{random_string}.pkl', 'wb') as f:
+                pickle.dump(gmm_model, f)
+                print(f"GMM saved successfully: gmm/gmm_model_global_{idx}_{random_string}.pkl")
         end_time = time.time()
         duration = end_time - start_time
         print("GMM fixing execution time: {:.2f} s".format(duration))

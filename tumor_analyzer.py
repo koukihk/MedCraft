@@ -7,6 +7,9 @@ import nibabel as nib
 import numpy as np
 from scipy import interpolate
 from scipy import ndimage
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.stats import multivariate_normal
 from scipy.spatial.distance import cdist
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
@@ -417,7 +420,7 @@ class TumorAnalyzer:
         }
 
         return models.get(model_type)
-        
+
     @staticmethod
     def gmm2expression(gmm_model):
         components = gmm_model.n_components
