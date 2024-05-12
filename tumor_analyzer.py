@@ -5,6 +5,7 @@ import random
 import string
 import warnings
 from multiprocessing import Pool, cpu_count
+import matplotlib.pyplot as plt
 
 import nibabel as nib
 import numpy as np
@@ -47,8 +48,38 @@ class TumorAnalyzer:
         """
         Fits a Gaussian Mixture Model to the given data.
         """
-        train_position = np.array([tumor.position for tumor in train_tumors])
-        val_position = np.array([tumor.position for tumor in val_tumors])
+        train_positions = np.array([tumor.position for tumor in train_tumors])
+        val_positions = np.array([tumor.position for tumor in val_tumors])
+
+        # debug
+        n_components_range = range(1, 6)
+        aic_scores = []
+        bic_scores = []
+
+        for n_components in n_components_range:
+            gmm = GaussianMixture(
+                n_components=n_components,
+                covariance_type=cov_type,
+                init_params='k-means++',
+                tol=tol,
+                max_iter=max_iter
+            )
+            debug_positions = np.concatenate((train_positions, val_positions))
+            gmm.fit(debug_positions)
+            aic = gmm.aic(debug_positions)
+            bic = gmm.bic(debug_positions)
+            aic_scores.append(aic)
+            bic_scores.append(bic)
+
+            print(f"Number of components: {n_components}, AIC: {aic}, BIC: {bic}")
+
+        best_aic_idx = np.argmin(aic_scores)
+        best_bic_idx = np.argmin(bic_scores)
+        best_aic = n_components_range[best_aic_idx]
+        best_bic = n_components_range[best_bic_idx]
+
+        print("Best number of components based on AIC:", best_aic)
+        print("Best number of components based on BIC:", best_bic)
 
         self.gmm_model = GaussianMixture(
             n_components=optimal_components,
@@ -64,8 +95,8 @@ class TumorAnalyzer:
             no_improvement_count = 0
 
             for iter in range(max_iter):
-                self.gmm_model.fit(train_position)
-                val_score = self.gmm_model.score(val_position)
+                self.gmm_model.fit(train_positions)
+                val_score = self.gmm_model.score(val_positions)
 
                 if val_score > best_score:
                     best_score = val_score
@@ -80,8 +111,8 @@ class TumorAnalyzer:
                     self.gmm_model.set_params(**best_params)
                     break
         else:
-            train_position = np.concatenate((train_position, val_position))
-            self.gmm_model.fit(train_position)
+            train_positions = np.concatenate((train_positions, val_positions))
+            self.gmm_model.fit(train_positions)
 
     @staticmethod
     def process_file(ct_file, data_folder):
@@ -448,4 +479,65 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
+    @staticmethod
+    def gmm2plt(gmm_model):
+
+        def plot_gmm_component(ax, mean, covariance, color):
+            num_points = 100
+            u = np.linspace(0, 2 * np.pi, num_points)
+            v = np.linspace(0, np.pi, num_points)
+            x = np.outer(np.cos(u), np.sin(v))
+            y = np.outer(np.sin(u), np.sin(v))
+            z = np.outer(np.ones(num_points), np.cos(v))
+
+            xyz = np.dot(np.vstack((x.flatten(), y.flatten(), z.flatten())).T, np.linalg.cholesky(covariance).T) + mean
+
+            x = xyz[:, 0].reshape(num_points, num_points)
+            y = xyz[:, 1].reshape(num_points, num_points)
+            z = xyz[:, 2].reshape(num_points, num_points)
+
+            ax.plot_surface(x, y, z, color=color, alpha=0.3)
+
+        xlim = (0, 350)
+        ylim = (0, 500)
+        zlim = (0, 220)
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        means = gmm_model.means_
+        covariances = gmm_model.covariances_
+        weights = gmm_model.weights_
+
+        for i in range(len(weights)):
+            if gmm_model.covariance_type == 'full':
+                cov_matrix = covariances[i]
+            elif gmm_model.covariance_type == 'tied':
+                cov_matrix = covariances
+            elif gmm_model.covariance_type == 'diag':
+                cov_matrix = np.diag(covariances[i])
+            elif gmm_model.covariance_type == 'spherical':
+                cov_matrix = np.eye(len(means[i])) * covariances[i]
+
+            x, y, z = np.random.multivariate_normal(means[i], cov_matrix, int(2000 * weights[i])).T
+            ax.scatter(x, y, z, s=10, alpha=0.4, label=f'Component {i + 1}', color=f'C{i}')
+
+            plot_gmm_component(ax, means[i], cov_matrix, color=f'C{i}')
+
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_zlim(zlim)
+
+        ax.legend()
+
+        info_text = ''
+        for i in range(len(weights)):
+            info_text += f'Component {i + 1}:\nMean: {np.round(means[i], 2)}\nCovariance: {np.round(covariances[i], 2)}\n\n'
+        ax.text2D(0.65, 0.95, info_text, transform=ax.transAxes, fontsize=10, verticalalignment='top')
+
+        plt.tight_layout()
+        plt.show()
 
