@@ -1,5 +1,8 @@
 import glob
 import os
+import pickle
+import random
+import string
 import warnings
 from multiprocessing import Pool, cpu_count
 
@@ -150,33 +153,58 @@ class TumorAnalyzer:
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
+
+        def generate_random_str(length=6):
+            return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+
+        test_size = 0.2
+        random_state = 42
+        cov_type = 'diag'
+        tol = 0.00001
+        max_iter = 500
+        patience = 3
+
         if not self.gmm_flag:
-            test_size = 0.2
-            random_state = 42
-            if not split:
-                print(f'use default mode: {optimal_components}')
-                self.load_data(data_folder, parallel=parallel)
-                train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
-                self.fit_gmm_model(train_tumors, val_tumors, optimal_components[0], 'tied', 0.00001, 500,
-                                   early_stopping, 3)
-                self.gmm_model_global = self.gmm_model
-                self.gmm_flag = True
-            elif split:
-                print(f'use split mode: {optimal_components}')
-                self.load_data(data_folder, parallel=parallel)
+            os.makedirs(f'gmm/{cov_type}', exist_ok=True)
+            print_mode = "global" if not split else "split"
+            print(f'use {print_mode} mode: {optimal_components}')
+            self.load_data(data_folder, parallel=parallel)
+
+            if split:
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
                 all_non_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type != 'tiny']
                 train_tiny_tumors, val_tiny_tumors = train_test_split(all_tiny_tumors, test_size=test_size,
                                                                       random_state=random_state)
                 train_non_tiny_tumors, val_non_tiny_tumors = train_test_split(all_non_tiny_tumors, test_size=test_size,
                                                                               random_state=random_state)
-                self.fit_gmm_model(train_tiny_tumors, val_tiny_tumors, optimal_components[0], 'tied', 0.00001, 500,
-                                   early_stopping, 3)
-                self.gmm_model_tiny = self.gmm_model
-                self.fit_gmm_model(train_non_tiny_tumors, val_non_tiny_tumors, optimal_components[0], 'tied', 0.00001,
-                                   500, early_stopping, 3)
-                self.gmm_model_non_tiny = self.gmm_model
-                self.gmm_flag = True
+
+                nc_tiny, nc_non_tiny = optimal_components
+
+                for tumor_type, train_tumors, val_tumors, nc in [("tiny", train_tiny_tumors, val_tiny_tumors, nc_tiny),
+                                                                 (
+                                                                 "non_tiny", train_non_tiny_tumors, val_non_tiny_tumors,
+                                                                 nc_non_tiny)]:
+                    self.fit_gmm_model(train_tumors, val_tumors, nc, cov_type, tol, max_iter, early_stopping, patience)
+                    gmm_model_name = f'gmm_model_{tumor_type}_{nc}_{generate_random_str()}.pkl'
+                    with open(os.path.join('gmm', cov_type, gmm_model_name), 'wb') as f:
+                        pickle.dump(self.gmm_model, f)
+                    if tumor_type == "tiny":
+                        self.gmm_model_tiny = self.gmm_model
+                    else:
+                        self.gmm_model_non_tiny = self.gmm_model
+                    print(f"{tumor_type.capitalize()} GMM saved successfully: gmm/{cov_type}/{gmm_model_name}")
+
+            else:
+                train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
+                nc = optimal_components[0]
+                self.fit_gmm_model(train_tumors, val_tumors, nc, cov_type, tol, max_iter, early_stopping, patience)
+                gmm_model_name = f'gmm_model_global_{nc}_{generate_random_str()}.pkl'
+                with open(os.path.join('gmm', cov_type, gmm_model_name), 'wb') as f:
+                    pickle.dump(self.gmm_model, f)
+                    self.gmm_model_global = self.gmm_model
+                print(f"Global GMM saved successfully: gmm/{cov_type}/{gmm_model_name}")
+
+            self.gmm_flag = True
 
     @staticmethod
     def analyze_tumors_shape(data_dir='datafolds/04_LiTS/label/', output_save_dir='datafolds/04_LiTS/',

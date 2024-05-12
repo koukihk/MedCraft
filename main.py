@@ -382,28 +382,11 @@ def main_worker(gpu, args):
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
         analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, args.gmm_split, args.gmm_es, True)
-        os.makedirs('gmm', exist_ok=True)
         if args.gmm_split:
-            gmm_model_tiny = analyzer.get_gmm_model('tiny')
-            gmm_model_non_tiny = analyzer.get_gmm_model('non_tiny')
-            gmm_list.extend([gmm_model_tiny, gmm_model_non_tiny])
-            idx_tiny, idx_non_tiny = optimal_components
-            random_string_tiny = generate_random_string()
-            random_string_non_tiny = generate_random_string()
-            with open(f'gmm/gmm_model_tiny_{idx_tiny}_{random_string_tiny}.pkl', 'wb') as f:
-                pickle.dump(gmm_model_tiny, f)
-                print(f"GMM saved successfully: gmm/gmm_model_tiny_{idx_tiny}_{random_string_tiny}.pkl")
-            with open(f'gmm/gmm_model_non_tiny_{idx_non_tiny}_{random_string_non_tiny}.pkl', 'wb') as f:
-                pickle.dump(gmm_model_non_tiny, f)
-                print(f"GMM saved successfully: gmm/gmm_model_non_tiny_{idx_non_tiny}_{random_string_non_tiny}.pkl")
+            gmm_list.append(analyzer.get_gmm_model('tiny'))
+            gmm_list.append(analyzer.get_gmm_model('non_tiny'))
         else:
-            gmm_model = analyzer.get_gmm_model('global')
-            gmm_list.append(gmm_model)
-            idx = optimal_components[0]
-            random_string = generate_random_string()
-            with open(f'gmm/gmm_model_global_{idx}_{random_string}.pkl', 'wb') as f:
-                pickle.dump(gmm_model, f)
-                print(f"GMM saved successfully: gmm/gmm_model_global_{idx}_{random_string}.pkl")
+            gmm_list.append(analyzer.get_gmm_model('global'))
         end_time = time.time()
         duration = end_time - start_time
         print("GMM fixing execution time: {:.2f} s".format(duration))
