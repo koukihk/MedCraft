@@ -143,7 +143,7 @@ class TumorAnalyzer:
         self.target_spacing = (0.86950004, 0.86950004, 0.923077)
         self.target_volume = self.healthy_mean_size
 
-    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, cov_type='tied', tol=0.00001, max_iter=500,
+    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, cov_type='diag', tol=0.00001, max_iter=500,
                       early_stopping=True, patience=3):
         """
         Fits a Gaussian Mixture Model to the given data.
@@ -157,7 +157,7 @@ class TumorAnalyzer:
         bic_scores = []
 
         for n_components in n_components_range:
-            gmm = GaussianMixture(
+            gmm_debug = GaussianMixture(
                 n_components=n_components,
                 covariance_type=cov_type,
                 init_params='k-means++',
@@ -165,9 +165,9 @@ class TumorAnalyzer:
                 max_iter=max_iter
             )
             debug_positions = np.concatenate((train_positions, val_positions))
-            gmm.fit(debug_positions)
-            aic = gmm.aic(debug_positions)
-            bic = gmm.bic(debug_positions)
+            gmm_debug.fit(debug_positions)
+            aic = gmm_debug.aic(debug_positions)
+            bic = gmm_debug.bic(debug_positions)
             aic_scores.append(aic)
             bic_scores.append(bic)
 
@@ -299,7 +299,19 @@ class TumorAnalyzer:
             os.makedirs(f'gmm/{cov_type}', exist_ok=True)
             print_mode = "global" if not split else "split"
             print(f'use {print_mode} mode: {optimal_components}')
-            self.load_data(data_folder, parallel=parallel)
+
+            tumors_path = os.path.join(data_folder, 'tumors.npy')
+            if os.path.exists(tumors_path):
+                tumors_data = np.load(tumors_path, allow_pickle=True)
+                if len(tumors_data) > 850:
+                    print(f"tumors.npy found with {len(tumors_data)} tumors. Skipping data loading.")
+                    self.all_tumors = tumors_data.tolist()
+                else:
+                    print(f"tumors.npy found but only {len(tumors_data)} tumors. Loading data.")
+                    self.load_data(data_folder, parallel=parallel)
+            else:
+                print("tumors.npy not found. Loading data.")
+                self.load_data(data_folder, parallel=parallel)
 
             if split:
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
@@ -573,4 +585,27 @@ class TumorAnalyzer:
         }
 
         return models.get(model_type)
+
+    def get_all_tumor_positions(self, data_folder, save_folder, parallel):
+        tumors_path = os.path.join(data_folder, 'tumors.npy')
+        if os.path.exists(tumors_path):
+            tumors_data = np.load(tumors_path, allow_pickle=True)
+            if len(tumors_data) > 850:
+                print(f"tumors.npy found with {len(tumors_data)} tumors. Skipping data loading.")
+                return tumors_data.tolist()
+            else:
+                print(f"tumors.npy found but only {len(tumors_data)} tumors. Loading data.")
+                self.load_data(data_folder, parallel=parallel)
+        else:
+            print("tumors.npy not found. Loading data.")
+            self.load_data(data_folder, parallel=parallel)
+
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
+
+        save_path = os.path.join(save_folder, 'tumors.npy')
+        np.save(save_path, np.array(self.all_tumors, dtype=object))
+        print('Tumors data saved to {}'.format(save_path))
+
+        return self.all_tumors
 
