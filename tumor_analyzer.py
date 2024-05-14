@@ -17,6 +17,107 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 
+class GMMPlotter:
+    @staticmethod
+    def gmm2plt(gmm_model, num_samples=500):
+        """
+        Plot a 3D visualization of a Gaussian Mixture Model (GMM).
+
+        Parameters:
+        - gmm_model: A fitted Gaussian Mixture Model with attributes means_, covariances_, weights_, and covariance_type.
+        - num_samples: The total number of samples to generate from the GMM.
+        """
+
+        def plot_gmm_component(ax, mean, covariance, color, num_points=50):
+            """
+            Plot the ellipsoid representing the GMM component defined by mean and covariance.
+
+            Parameters:
+            - ax: The 3D axis to plot on.
+            - mean: Mean of the Gaussian component.
+            - covariance: Covariance matrix of the Gaussian component.
+            - color: Color of the ellipsoid.
+            - num_points: Number of points to use for plotting the ellipsoid.
+            """
+            u = np.linspace(0, 2 * np.pi, num_points)
+            v = np.linspace(0, np.pi, num_points)
+            x = np.outer(np.cos(u), np.sin(v))
+            y = np.outer(np.sin(u), np.sin(v))
+            z = np.outer(np.ones(num_points), np.cos(v))
+
+            xyz = np.dot(np.vstack((x.flatten(), y.flatten(), z.flatten())).T, np.linalg.cholesky(covariance).T) + mean
+
+            x = xyz[:, 0].reshape(num_points, num_points)
+            y = xyz[:, 1].reshape(num_points, num_points)
+            z = xyz[:, 2].reshape(num_points, num_points)
+
+            ax.plot_surface(x, y, z, color=color, alpha=0.3)
+
+        def get_covariance_matrix(covariances, index, covariance_type):
+            """
+            Retrieve the covariance matrix for the specified component.
+
+            Parameters:
+            - covariances: Covariance matrices from the GMM.
+            - index: Index of the component.
+            - covariance_type: Type of the covariance matrix (full, tied, diag, spherical).
+
+            Returns:
+            - The covariance matrix for the specified component.
+            """
+            if covariance_type == 'full':
+                return covariances[index]
+            elif covariance_type == 'tied':
+                return covariances
+            elif covariance_type == 'diag':
+                return np.diag(covariances[index])
+            elif covariance_type == 'spherical':
+                return np.eye(len(covariances[index])) * covariances[index]
+
+        # Set up the plot
+        xlim = (0, 350)
+        ylim = (0, 600)
+        zlim = (0, 200)
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        means = gmm_model.means_
+        covariances = gmm_model.covariances_
+        weights = gmm_model.weights_
+        covariance_type = gmm_model.covariance_type
+
+        for i, weight in enumerate(weights):
+            cov_matrix = get_covariance_matrix(covariances, i, covariance_type)
+
+            # Generate random samples according to the component's parameters
+            samples = np.random.multivariate_normal(means[i], cov_matrix, size=max(1, int(num_samples * weight)))
+
+            ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2], s=10, alpha=0.4, label=f'Component {i + 1}',
+                       color=f'C{i % 10}')
+
+            plot_gmm_component(ax, means[i], cov_matrix, color=f'C{i % 10}')
+
+        # Customize axes
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_zlim(zlim)
+
+        ax.legend(loc='upper right')
+
+        # Information text
+        info_text = '\n'.join(
+            [f'Component {i + 1}:\nMean: {np.round(means[i], 2)}\nCovariance: {np.round(covariances[i], 2)}' for i in
+             range(len(weights))])
+        ax.text2D(0.05, 0.95, info_text, transform=ax.transAxes, fontsize=10, verticalalignment='top')
+
+        plt.tight_layout()
+        plt.show()
+
+
 class Tumor:
     def __init__(self, position=None, type=None, filename=None):
         self.position = position  # relative position
@@ -478,66 +579,4 @@ class TumorAnalyzer:
         }
 
         return models.get(model_type)
-
-    @staticmethod
-    def gmm2plt(gmm_model):
-
-        def plot_gmm_component(ax, mean, covariance, color):
-            num_points = 100
-            u = np.linspace(0, 2 * np.pi, num_points)
-            v = np.linspace(0, np.pi, num_points)
-            x = np.outer(np.cos(u), np.sin(v))
-            y = np.outer(np.sin(u), np.sin(v))
-            z = np.outer(np.ones(num_points), np.cos(v))
-
-            xyz = np.dot(np.vstack((x.flatten(), y.flatten(), z.flatten())).T, np.linalg.cholesky(covariance).T) + mean
-
-            x = xyz[:, 0].reshape(num_points, num_points)
-            y = xyz[:, 1].reshape(num_points, num_points)
-            z = xyz[:, 2].reshape(num_points, num_points)
-
-            ax.plot_surface(x, y, z, color=color, alpha=0.3)
-
-        xlim = (0, 350)
-        ylim = (0, 500)
-        zlim = (0, 220)
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-
-        means = gmm_model.means_
-        covariances = gmm_model.covariances_
-        weights = gmm_model.weights_
-
-        for i in range(len(weights)):
-            if gmm_model.covariance_type == 'full':
-                cov_matrix = covariances[i]
-            elif gmm_model.covariance_type == 'tied':
-                cov_matrix = covariances
-            elif gmm_model.covariance_type == 'diag':
-                cov_matrix = np.diag(covariances[i])
-            elif gmm_model.covariance_type == 'spherical':
-                cov_matrix = np.eye(len(means[i])) * covariances[i]
-
-            x, y, z = np.random.multivariate_normal(means[i], cov_matrix, int(2000 * weights[i])).T
-            ax.scatter(x, y, z, s=10, alpha=0.4, label=f'Component {i + 1}', color=f'C{i}')
-
-            plot_gmm_component(ax, means[i], cov_matrix, color=f'C{i}')
-
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_zlim(zlim)
-
-        ax.legend()
-
-        info_text = ''
-        for i in range(len(weights)):
-            info_text += f'Component {i + 1}:\nMean: {np.round(means[i], 2)}\nCovariance: {np.round(covariances[i], 2)}\n\n'
-        ax.text2D(0.65, 0.95, info_text, transform=ax.transAxes, fontsize=10, verticalalignment='top')
-
-        plt.tight_layout()
-        plt.show()
 
