@@ -122,10 +122,9 @@ class Tumor:
     def __init__(self, position=None, type=None, filename=None):
         self.position = position  # relative position
         self.type = type  # one of ['tiny', 'small', 'medium', 'large']
-        self.filename = filename  # liver_*.nii.gz
 
     def __repr__(self):
-        return f"Tumor(position={self.position}, type={self.type}, filename={self.filename})"
+        return f"Tumor(position={self.position}, type={self.type})"
 
 
 class TumorAnalyzer:
@@ -223,7 +222,7 @@ class TumorAnalyzer:
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
 
-        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2, False)
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2)
         return tumors
 
     def load_data(self, data_folder, parallel=False):
@@ -483,41 +482,24 @@ class TumorAnalyzer:
         return liver_mask
 
     @staticmethod
-    def resize_mask(mask_scan, new_shape, target_spacing=(0.86950004, 0.86950004, 0.923077)):
+    def resize_mask(volume, new_shape):
         """
-        Resizes the volume on given shape with target spacing.
+        Resizes the volume on given shape.
         """
-        x_old, y_old, z_old = mask_scan.shape
+        x_old, y_old, z_old = volume.shape
         x_new, y_new, z_new = new_shape
-
-        # Compute current spacing
-        spacing_x = 1.0
-        spacing_y = 1.0
-        spacing_z = 1.0
-
-        if x_old > 1:
-            spacing_x = (x_old - 1) / (x_old - 1)
-        if y_old > 1:
-            spacing_y = (y_old - 1) / (y_old - 1)
-        if z_old > 1:
-            spacing_z = (z_old - 1) / (z_old - 1)
-
-        # Compute scaling factors for new spacing
-        scale_x = spacing_x / target_spacing[0]
-        scale_y = spacing_y / target_spacing[1]
-        scale_z = spacing_z / target_spacing[2]
 
         # Create grid for interpolation
         x = np.linspace(0, x_old - 1, x_old)
         y = np.linspace(0, y_old - 1, y_old)
         z = np.linspace(0, z_old - 1, z_old)
 
-        new_x = np.linspace(0, x_old - 1, int(x_new * scale_x))
-        new_y = np.linspace(0, y_old - 1, int(y_new * scale_y))
-        new_z = np.linspace(0, z_old - 1, int(z_new * scale_z))
+        new_x = np.linspace(0, x_old - 1, x_new)
+        new_y = np.linspace(0, y_old - 1, y_new)
+        new_z = np.linspace(0, z_old - 1, z_new)
 
         # Create interpolation function
-        interpolator = interpolate.RegularGridInterpolator((x, y, z), mask_scan, method='nearest', bounds_error=False,
+        interpolator = interpolate.RegularGridInterpolator((x, y, z), volume, method='nearest', bounds_error=False,
                                                            fill_value=0)
 
         # Interpolate volume
@@ -526,15 +508,33 @@ class TumorAnalyzer:
         return np.round(new_volume).astype(int)
 
     @staticmethod
-    def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2, mapper=False):
+    def resize_mask_spacing(mask_scan, new_shape, origin_spacing, target_spacing=(0.86950004, 0.86950004, 0.923077)):
+        """
+        Resizes the volume to the given shape with target spacing.
+        """
+        old_shape = mask_scan.shape
+        old_spacing = origin_spacing
+
+        scale = [old_spacing[i] / target_spacing[i] for i in range(3)]
+
+        new_shape_scaled = [int(old_shape[i] * scale[i]) for i in range(3)]
+
+        new_volume = ndimage.zoom(mask_scan, zoom=scale, mode='nearest', order=0)
+
+        pad_width = [(0, max(0, new_shape[i] - new_shape_scaled[i])) for i in range(3)]
+        new_volume = np.pad(new_volume, pad_width, mode='constant')
+
+        new_volume = new_volume[:new_shape[0], :new_shape[1], :new_shape[2]]
+
+        new_volume[new_volume > 1] = 1
+
+        return new_volume.astype(int)
+
+    @staticmethod
+    def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2):
         """
         Analyzes tumor information from label data.
         """
-
-        def tumor_mapper(extracted_tumor):
-            return extracted_tumor
-
-        file_name = os.path.basename(label_path)
         label = nib.load(label_path)
         pixdim = label.header['pixdim']
         spacing_mm = tuple(pixdim[1:4])
@@ -552,18 +552,12 @@ class TumorAnalyzer:
             label_numeric, gt_N = ndimage.label(tumor_mask)
             for segid in range(1, gt_N + 1):
                 extracted_label_numeric = np.uint8(label_numeric == segid)
-                if mapper:
-                    mapped_label_binary = tumor_mapper(extracted_label_numeric)
-                    clot_size = np.sum(mapped_label_binary)
-                else:
-                    clot_size = np.sum(extracted_label_numeric)
+                clot_size = np.sum(extracted_label_numeric)
                 if clot_size < 8:
                     continue
                 tumor_position = ndimage.measurements.center_of_mass(extracted_label_numeric)
-                # if any(coord < 0 for coord in tumor_position):
-                #     continue
                 tumor_type, _, _ = TumorAnalyzer.analyze_tumor_type_helper(clot_size, spacing_mm)
-                tumor = Tumor(position=tumor_position, type=tumor_type, filename=file_name)
+                tumor = Tumor(position=tumor_position, type=tumor_type)
                 tumors.append(tumor)
 
         return tumors
