@@ -586,7 +586,7 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
-    def get_all_tumor_positions(self, data_folder, save_folder, parallel):
+    def get_all_tumor_positions(self, data_folder, save_folder, save=False, parallel=True):
         tumors_path = os.path.join(data_folder, 'tumors.npy')
         if os.path.exists(tumors_path):
             tumors_data = np.load(tumors_path, allow_pickle=True)
@@ -600,12 +600,12 @@ class TumorAnalyzer:
             print("tumors.npy not found. Loading data.")
             self.load_data(data_folder, parallel=parallel)
 
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-
-        save_path = os.path.join(save_folder, 'tumors.npy')
-        np.save(save_path, np.array(self.all_tumors, dtype=object))
-        print('Tumors data saved to {}'.format(save_path))
+        if save:
+            if not os.path.exists(save_folder):
+                os.makedirs(save_folder)
+            save_path = os.path.join(save_folder, 'tumors.npy')
+            np.save(save_path, np.array(self.all_tumors, dtype=object))
+            print('Tumors data saved to {}'.format(save_path))
 
         return self.all_tumors
 
