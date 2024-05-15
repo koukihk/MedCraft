@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 class GMMPlotter:
     @staticmethod
-    def gmm2plt(gmm_model, num_samples=500):
+    def gmm2plt(gmm_model, model_type='global', num_samples=800):
         """
         Plot a 3D visualization of a Gaussian Mixture Model (GMM).
 
@@ -109,9 +109,14 @@ class GMMPlotter:
         ax.legend(loc='upper right')
 
         # Information text
-        info_text = '\n'.join(
-            [f'Component {i + 1}:\nMean: {np.round(means[i], 2)}\nCovariance: {np.round(covariances[i], 2)}' for i in
-             range(len(weights))])
+        info_text = ''.join(
+            [
+                f'Component {i + 1}:\n'
+                f'Mean: {np.round(means[i], 2)}\n'
+                f'Covariance: {np.round(covariances[i], 2)}\n'
+                for i in range(len(weights))
+            ]
+        ) + f'\nCovType: {covariance_type}\nModelType: {model_type}'
         ax.text2D(0.05, 0.95, info_text, transform=ax.transAxes, fontsize=10, verticalalignment='top')
 
         plt.tight_layout()
@@ -290,7 +295,7 @@ class TumorAnalyzer:
 
         test_size = 0.2
         random_state = 42
-        cov_type = 'diag'
+        cov_type = 'tied'
         tol = 0.00001
         max_iter = 500
         patience = 3
@@ -518,29 +523,6 @@ class TumorAnalyzer:
         new_volume = interpolator((new_x[:, None, None], new_y[None, :, None], new_z[None, None, :]))
 
         return np.round(new_volume).astype(int)
-
-    @staticmethod
-    def resize_mask_spacing(mask_scan, new_shape, origin_spacing, target_spacing=(0.86950004, 0.86950004, 0.923077)):
-        """
-        Resizes the volume to the given shape with target spacing.
-        """
-        old_shape = mask_scan.shape
-        old_spacing = origin_spacing
-
-        scale = [old_spacing[i] / target_spacing[i] for i in range(3)]
-
-        new_shape_scaled = [int(old_shape[i] * scale[i]) for i in range(3)]
-
-        new_volume = ndimage.zoom(mask_scan, zoom=scale, mode='nearest', order=0)
-
-        pad_width = [(0, max(0, new_shape[i] - new_shape_scaled[i])) for i in range(3)]
-        new_volume = np.pad(new_volume, pad_width, mode='constant')
-
-        new_volume = new_volume[:new_shape[0], :new_shape[1], :new_shape[2]]
-
-        new_volume[new_volume > 1] = 1
-
-        return new_volume.astype(int)
 
     @staticmethod
     def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2):
