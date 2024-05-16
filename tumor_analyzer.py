@@ -21,17 +21,18 @@ from tqdm import tqdm
 
 class GMMPlotter:
     @staticmethod
-    def gmm2plt(gmm_model, model_type='global', num_samples=800):
+    def gmm2plt(gmm_model, data, model_type='global', num_samples=700, num_points=70):
         """
         Plot a 3D visualization of a Gaussian Mixture Model (GMM) using Plotly.
 
         Parameters:
         - gmm_model: A fitted Gaussian Mixture Model with attributes means_, covariances_, weights_, and covariance_type.
+        - data: The original data points used for fitting the GMM.
         - num_samples: The total number of samples to generate from the GMM.
-        - output_file: The filename to save the plot as an HTML file.
+        - num_points: The number of points to use for plotting the ellipsoid surfaces.
         """
 
-        def plot_gmm_component(mean, covariance, color, num_points=50):
+        def plot_gmm_component(mean, covariance, color, num_points):
             """
             Generate the ellipsoid representing the GMM component defined by mean and covariance.
 
@@ -56,7 +57,7 @@ class GMMPlotter:
             y = xyz[:, 1].reshape(num_points, num_points)
             z = xyz[:, 2].reshape(num_points, num_points)
 
-            return go.Surface(x=x, y=y, z=z, colorscale=[[0, color], [1, color]], opacity=0.3, showscale=False)
+            return go.Surface(x=x, y=y, z=z, colorscale=[[0, color], [1, color]], opacity=0.2, showscale=False)
 
         def get_covariance_matrix(covariances, index, covariance_type):
             """
@@ -84,7 +85,16 @@ class GMMPlotter:
         weights = gmm_model.weights_
         covariance_type = gmm_model.covariance_type
 
-        data = []
+        data_traces = []
+
+        # Add the original data points to the plot with special color and larger size
+        original_data_trace = go.Scatter3d(
+            x=data[:, 0], y=data[:, 1], z=data[:, 2],
+            mode='markers',
+            marker=dict(size=2, opacity=0.7, color='blue'),  # Highlight original data points with red color
+            name='Original Data'
+        )
+        data_traces.append(original_data_trace)
 
         for i, weight in enumerate(weights):
             cov_matrix = get_covariance_matrix(covariances, i, covariance_type)
@@ -95,15 +105,15 @@ class GMMPlotter:
             scatter = go.Scatter3d(
                 x=samples[:, 0], y=samples[:, 1], z=samples[:, 2],
                 mode='markers',
-                marker=dict(size=2, opacity=0.6, color=f'rgba({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256}, 0.6)'),
+                marker=dict(size=2, opacity=0.4, color=f'rgba({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256}, 0.4)'),
                 name=f'Component {i + 1}'
             )
-            data.append(scatter)
+            data_traces.append(scatter)
 
-            # Plot ellipsoids for 1, 2, and 3 standard deviations
+            # Plot ellipsoids for 1, 2, and 3 standard deviations with lower opacity
             for k in [1, 2, 3]:
-                ellipsoid = plot_gmm_component(means[i], k**2 * cov_matrix, color=f'rgb({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256})')
-                data.append(ellipsoid)
+                ellipsoid = plot_gmm_component(means[i], k**2 * cov_matrix, color=f'rgb({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256})', num_points=num_points)
+                data_traces.append(ellipsoid)
 
         # Customize layout
         layout = go.Layout(
@@ -116,7 +126,7 @@ class GMMPlotter:
             showlegend=True
         )
 
-        fig = go.Figure(data=data, layout=layout)
+        fig = go.Figure(data=data_traces, layout=layout)
 
         # Information text
         info_text = ''.join(
@@ -143,7 +153,7 @@ class GMMPlotter:
         )
 
         # Save the figure as an HTML file
-        output_directory = f'gmm/html'
+        output_directory = 'gmm/html'
         os.makedirs(output_directory, exist_ok=True)
         output_file = os.path.join(output_directory, f'gmm_model_{model_type}_{len(gmm_model.weights_)}.html')
         pyo.plot(fig, filename=output_file, auto_open=True)
