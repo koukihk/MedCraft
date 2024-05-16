@@ -6,7 +6,9 @@ import string
 import warnings
 from multiprocessing import Pool, cpu_count
 import matplotlib.pyplot as plt
-
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
+import plotly.offline as pyo
 import nibabel as nib
 import numpy as np
 from scipy import interpolate
@@ -21,23 +23,26 @@ class GMMPlotter:
     @staticmethod
     def gmm2plt(gmm_model, model_type='global', num_samples=800):
         """
-        Plot a 3D visualization of a Gaussian Mixture Model (GMM).
+        Plot a 3D visualization of a Gaussian Mixture Model (GMM) using Plotly.
 
         Parameters:
         - gmm_model: A fitted Gaussian Mixture Model with attributes means_, covariances_, weights_, and covariance_type.
         - num_samples: The total number of samples to generate from the GMM.
+        - output_file: The filename to save the plot as an HTML file.
         """
 
-        def plot_gmm_component(ax, mean, covariance, color, num_points=50):
+        def plot_gmm_component(mean, covariance, color, num_points=50):
             """
-            Plot the ellipsoid representing the GMM component defined by mean and covariance.
+            Generate the ellipsoid representing the GMM component defined by mean and covariance.
 
             Parameters:
-            - ax: The 3D axis to plot on.
             - mean: Mean of the Gaussian component.
             - covariance: Covariance matrix of the Gaussian component.
             - color: Color of the ellipsoid.
             - num_points: Number of points to use for plotting the ellipsoid.
+
+            Returns:
+            - A Plotly trace representing the ellipsoid.
             """
             u = np.linspace(0, 2 * np.pi, num_points)
             v = np.linspace(0, np.pi, num_points)
@@ -51,7 +56,7 @@ class GMMPlotter:
             y = xyz[:, 1].reshape(num_points, num_points)
             z = xyz[:, 2].reshape(num_points, num_points)
 
-            ax.plot_surface(x, y, z, color=color, alpha=0.3)
+            return go.Surface(x=x, y=y, z=z, colorscale=[[0, color], [1, color]], opacity=0.3, showscale=False)
 
         def get_covariance_matrix(covariances, index, covariance_type):
             """
@@ -74,17 +79,12 @@ class GMMPlotter:
             elif covariance_type == 'spherical':
                 return np.eye(len(covariances[index])) * covariances[index]
 
-        # Set up the plot
-        xlim = (0, 350)
-        ylim = (0, 600)
-        zlim = (0, 200)
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-
         means = gmm_model.means_
         covariances = gmm_model.covariances_
         weights = gmm_model.weights_
         covariance_type = gmm_model.covariance_type
+
+        data = []
 
         for i, weight in enumerate(weights):
             cov_matrix = get_covariance_matrix(covariances, i, covariance_type)
@@ -92,35 +92,61 @@ class GMMPlotter:
             # Generate random samples according to the component's parameters
             samples = np.random.multivariate_normal(means[i], cov_matrix, size=max(1, int(num_samples * weight)))
 
-            ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2], s=10, alpha=0.4, label=f'Component {i + 1}',
-                       color=f'C{i % 10}')
+            scatter = go.Scatter3d(
+                x=samples[:, 0], y=samples[:, 1], z=samples[:, 2],
+                mode='markers',
+                marker=dict(size=2, opacity=0.6, color=f'rgba({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256}, 0.6)'),
+                name=f'Component {i + 1}'
+            )
+            data.append(scatter)
 
-            plot_gmm_component(ax, means[i], cov_matrix, color=f'C{i % 10}')
+            # Plot ellipsoids for 1, 2, and 3 standard deviations
+            for k in [1, 2, 3]:
+                ellipsoid = plot_gmm_component(means[i], k**2 * cov_matrix, color=f'rgb({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256})')
+                data.append(ellipsoid)
 
-        # Customize axes
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
+        # Customize layout
+        layout = go.Layout(
+            scene=dict(
+                xaxis=dict(title='X'),
+                yaxis=dict(title='Y'),
+                zaxis=dict(title='Z')
+            ),
+            title='3D GMM Visualization',
+            showlegend=True
+        )
 
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_zlim(zlim)
-
-        ax.legend(loc='upper right')
+        fig = go.Figure(data=data, layout=layout)
 
         # Information text
         info_text = ''.join(
             [
                 f'Component {i + 1}:\n'
                 f'Mean: {np.round(means[i], 2)}\n'
-                f'Covariance: {np.round(covariances[i], 2)}\n'
+                f'Covariance: {np.round(get_covariance_matrix(covariances, i, covariance_type), 2)}\n\n'
                 for i in range(len(weights))
             ]
-        ) + f'\nCovType: {covariance_type}\nModelType: {model_type}'
-        ax.text2D(0.05, 0.95, info_text, transform=ax.transAxes, fontsize=10, verticalalignment='top')
+        ) + f'CovType: {covariance_type}\nModelType: {model_type}'
 
-        plt.tight_layout()
-        plt.show()
+        # Add a text box for information
+        fig.add_annotation(
+            x=0.5,
+            y=1.1,
+            xref='paper',
+            yref='paper',
+            text=info_text,
+            showarrow=False,
+            font=dict(size=12),
+            align='left',
+            bordercolor='black',
+            borderwidth=1
+        )
+
+        # Save the figure as an HTML file
+        output_directory = f'gmm/html'
+        os.makedirs(output_directory, exist_ok=True)
+        output_file = os.path.join(output_directory, f'gmm_model_{model_type}_{len(gmm_model.weights_)}.html')
+        pyo.plot(fig, filename=output_file, auto_open=True)
 
 
 class Tumor:
