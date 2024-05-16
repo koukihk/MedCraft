@@ -5,12 +5,11 @@ import random
 import string
 import warnings
 from multiprocessing import Pool, cpu_count
-import matplotlib.pyplot as plt
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
-import plotly.offline as pyo
+
 import nibabel as nib
 import numpy as np
+import plotly.graph_objs as go
+import plotly.offline as pyo
 from scipy import interpolate
 from scipy import ndimage
 from scipy.spatial.distance import cdist
@@ -105,14 +104,17 @@ class GMMPlotter:
             scatter = go.Scatter3d(
                 x=samples[:, 0], y=samples[:, 1], z=samples[:, 2],
                 mode='markers',
-                marker=dict(size=2, opacity=0.4, color=f'rgba({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256}, 0.4)'),
+                marker=dict(size=2, opacity=0.4,
+                            color=f'rgba({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256}, 0.4)'),
                 name=f'Component {i + 1}'
             )
             data_traces.append(scatter)
 
             # Plot ellipsoids for 1, 2, and 3 standard deviations with lower opacity
             for k in [1, 2, 3]:
-                ellipsoid = plot_gmm_component(means[i], k**2 * cov_matrix, color=f'rgb({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256})', num_points=num_points)
+                ellipsoid = plot_gmm_component(means[i], k**2 * cov_matrix,
+                                               color=f'rgb({(i * 30) % 256}, {(i * 60) % 256}, {(i * 90) % 256})',
+                                               num_points=num_points)
                 data_traces.append(ellipsoid)
 
         # Customize layout
@@ -155,7 +157,8 @@ class GMMPlotter:
         # Save the figure as an HTML file
         output_directory = 'gmm/html'
         os.makedirs(output_directory, exist_ok=True)
-        output_file = os.path.join(output_directory, f'gmm_model_{model_type}_{len(gmm_model.weights_)}.html')
+        output_file = os.path.join(output_directory,
+                                   f'gmm_model_{model_type}_{covariance_type}_{len(gmm_model.weights_)}.html')
         pyo.plot(fig, filename=output_file, auto_open=True)
 
 
@@ -321,7 +324,8 @@ class TumorAnalyzer:
 
         return train_tumors, val_tumors
 
-    def gmm_starter(self, data_folder, optimal_components, split=False, early_stopping=True, parallel=False):
+    def gmm_starter(self, data_folder, optimal_components, cov_type='diag', split=False,
+                    early_stopping=True, parallel=False):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
@@ -331,7 +335,7 @@ class TumorAnalyzer:
 
         test_size = 0.2
         random_state = 42
-        cov_type = 'tied'
+        # cov_type = 'full'
         tol = 0.00001
         max_iter = 500
         patience = 3
