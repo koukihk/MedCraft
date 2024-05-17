@@ -24,7 +24,7 @@ from monai.transforms import AsDiscrete
 from monai_trainer import AMDistributedSampler, run_training
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from tumor_analyzer import TumorAnalyzer
+from tumor_analyzer import TumorAnalyzer, EllipsoidFitter
 
 warnings.filterwarnings("ignore")
 
@@ -42,6 +42,7 @@ parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_es', action='store_true')
 parser.add_argument('--optimal_components', default='4', type=str)  # like '5,2'
+parser.add_argument('--ellipsoid', action='store_true')
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
 parser.add_argument('--logdir', default=None)
@@ -246,13 +247,14 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[]):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
                 transforms.LoadImaged(keys=["image", "label"]),
                 transforms.AddChanneld(keys=["image", "label"]),
-                TumorGenerated(keys=["image", "label"], prob=1.0, gmm_list=gmm_list),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=1.0, gmm_list=gmm_list,
+                               ellipsoid_model=ellipsoid_model, model_name=model_name),  # here we use online
             ]
         )
 
@@ -263,7 +265,8 @@ def _get_transform(args, gmm_list=[]):
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list),  # here we use online
+                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
+                               ellipsoid_model=ellipsoid_model, model_name=model_name),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -375,11 +378,13 @@ def generate_random_string(length=6):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 def main_worker(gpu, args):
+    model_name = None
+
     gmm_list = []
     if args.gmm:
         start_time = time.time()
         optimal_components = np.array(args.optimal_components.split(',')).astype(int)
-        cov_type = 'diag'
+        cov_type = 'tied'
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
         analyzer.gmm_starter('datafolds/04_LiTS', optimal_components, cov_type, args.gmm_split, args.gmm_es, True)
@@ -388,9 +393,22 @@ def main_worker(gpu, args):
             gmm_list.append(analyzer.get_gmm_model('non_tiny'))
         else:
             gmm_list.append(analyzer.get_gmm_model('global'))
+        model_name = 'gmm'
         end_time = time.time()
         duration = end_time - start_time
         print("GMM fixing execution time: {:.2f} s".format(duration))
+
+    ellipsoid_model = None
+    if args.ellipsoid:
+        start_time = time.time()
+        analyzer = TumorAnalyzer()
+        data = analyzer.get_all_tumors('datafolds/04_LiTS', 'datafolds/04_LiTS', False, True)
+        data = np.array([tumor.position for tumor in data])
+        ellipsoid_model = EllipsoidFitter(data)
+        model_name = 'ellipsoid'
+        end_time = time.time()
+        duration = end_time - start_time
+        print("Ellipsoid fixing execution time: {:.2f} s".format(duration))
 
     if args.distributed:
         # in new Pytorch/python labda functions fail to pickle with spawn
@@ -425,7 +443,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':

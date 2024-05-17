@@ -15,11 +15,15 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  prob: float = 0.1,
                  tumor_prob=[0.2, 0.2, 0.2, 0.2, 0.2],
                  allow_missing_keys: bool = False,
-                 gmm_list=[]
+                 gmm_list=[],
+                 ellipsoid_model = None,
+                 model_name = None
                  ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)
         self.gmm_list = gmm_list
+        self.ellipsoid_model = ellipsoid_model
+        self.model_name = model_name
         random.seed(0)
         np.random.seed(0)
 
@@ -47,6 +51,6 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
-                                                          self.gmm_list)
+                                                          self.gmm_list, self.ellipsoid_model, self.model_name)
 
         return d

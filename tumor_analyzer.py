@@ -6,6 +6,7 @@ import string
 import warnings
 from multiprocessing import Pool, cpu_count
 
+import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import plotly.graph_objs as go
@@ -13,9 +14,77 @@ import plotly.offline as pyo
 from scipy import interpolate
 from scipy import ndimage
 from scipy.spatial.distance import cdist
+from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+
+
+class EllipsoidFitter:
+    def __init__(self, data):
+        """
+        Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
+        """
+        self.data = data
+        self.filtered_data = self._remove_outliers(data)
+        self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
+
+    def _remove_outliers(self, data):
+        """
+        Remove outliers to keep at least 95% of the data.
+        """
+        mean = np.mean(data, axis=0)
+        std = np.std(data, axis=0)
+        filtered_data = data[np.all(np.abs(data - mean) <= 2 * std, axis=1)]
+        return filtered_data
+
+    def _fit_ellipsoid(self, data):
+        """
+        Fit an ellipsoid to the given data using PCA.
+        """
+        pca = PCA(n_components=3)
+        pca.fit(data)
+        center = np.mean(data, axis=0)
+
+        axes = pca.components_
+        variances = pca.explained_variance_
+
+        radii = np.sqrt(variances) * 3
+
+        return center, axes, radii
+
+    def get_random_point(self):
+        """
+        Generate a random point inside the fitted ellipsoid.
+        """
+        u = np.random.normal(0, 1, 3)
+        norm = np.linalg.norm(u)
+        u = u / norm
+
+        random_point = self.center + np.dot(self.axes.T, u * self.radii)
+        return random_point
+
+    def plot_ellipsoid(self):
+        """
+        Plot the fitted ellipsoid along with the given data points.
+        """
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        ax.scatter(self.filtered_data[:, 0], self.filtered_data[:, 1], self.filtered_data[:, 2], color='b', s=1)
+
+        u = np.linspace(0, 2 * np.pi, 100)
+        v = np.linspace(0, np.pi, 100)
+        x = self.radii[0] * np.outer(np.cos(u), np.sin(v))
+        y = self.radii[1] * np.outer(np.sin(u), np.sin(v))
+        z = self.radii[2] * np.outer(np.ones_like(u), np.cos(v))
+
+        for i in range(len(x)):
+            for j in range(len(x)):
+                [x[i, j], y[i, j], z[i, j]] = np.dot([x[i, j], y[i, j], z[i, j]], self.axes) + self.center
+
+        ax.plot_wireframe(x, y, z, color='r', alpha=0.1)
+        plt.show()
 
 
 class GMMPlotter:
@@ -259,9 +328,9 @@ class TumorAnalyzer:
             self.gmm_model.fit(train_positions)
 
     @staticmethod
-    def process_file(ct_file, data_folder):
-        img_path = os.path.join(data_folder, "img", ct_file)
-        label_path = os.path.join(data_folder, "label", ct_file)
+    def process_file(ct_file, data_dir):
+        img_path = os.path.join(data_dir, "img", ct_file)
+        label_path = os.path.join(data_dir, "label", ct_file)
 
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
@@ -269,11 +338,11 @@ class TumorAnalyzer:
         tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2)
         return tumors
 
-    def load_data(self, data_folder, parallel=False):
+    def load_data(self, data_dir, parallel=False):
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
-        ct_files = sorted(os.listdir(os.path.join(data_folder, "label")))
+        ct_files = sorted(os.listdir(os.path.join(data_dir, "label")))
         expected_count = len(ct_files) // 2 - len(self.healthy_ct)
         ct_files = [ct_file for ct_file in ct_files
                     if not ct_file.startswith("._")
@@ -289,7 +358,7 @@ class TumorAnalyzer:
             with Pool(max_processes) as pool:
                 results = []
                 for ct_file in ct_files:
-                    results.append(pool.apply_async(TumorAnalyzer.process_file, (ct_file, data_folder)))
+                    results.append(pool.apply_async(TumorAnalyzer.process_file, (ct_file, data_dir)))
 
                 for result in tqdm(results, total=len(results), desc="Processing dataset"):
                     tumors = result.get()
@@ -297,7 +366,7 @@ class TumorAnalyzer:
 
         else:
             for ct_file in tqdm(ct_files, total=len(ct_files), desc="Processing dataset"):
-                tumors = TumorAnalyzer.process_file(ct_file, data_folder)
+                tumors = TumorAnalyzer.process_file(ct_file, data_dir)
                 all_tumors.extend(tumors)
 
         self.all_tumors = all_tumors
@@ -324,7 +393,7 @@ class TumorAnalyzer:
 
         return train_tumors, val_tumors
 
-    def gmm_starter(self, data_folder, optimal_components, cov_type='diag', split=False,
+    def gmm_starter(self, data_dir, optimal_components, cov_type='diag', split=False,
                     early_stopping=True, parallel=False):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
@@ -345,7 +414,7 @@ class TumorAnalyzer:
             print_mode = "global" if not split else "split"
             print(f'use {print_mode} mode: {optimal_components}')
 
-            tumors_path = os.path.join(data_folder, 'tumors.npy')
+            tumors_path = os.path.join(data_dir, 'tumors.npy')
             if os.path.exists(tumors_path):
                 tumors_data = np.load(tumors_path, allow_pickle=True)
                 if len(tumors_data) > 850:
@@ -353,10 +422,10 @@ class TumorAnalyzer:
                     self.all_tumors = tumors_data.tolist()
                 else:
                     print(f"tumors.npy found but only {len(tumors_data)} tumors. Loading data.")
-                    self.load_data(data_folder, parallel=parallel)
+                    self.load_data(data_dir, parallel=parallel)
             else:
                 print("tumors.npy not found. Loading data.")
-                self.load_data(data_folder, parallel=parallel)
+                self.load_data(data_dir, parallel=parallel)
 
             if split:
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
@@ -608,8 +677,8 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
-    def get_all_tumor_positions(self, data_folder, save_folder, save=False, parallel=True):
-        tumors_path = os.path.join(data_folder, 'tumors.npy')
+    def get_all_tumors(self, data_dir, save_folder, save=False, parallel=True):
+        tumors_path = os.path.join(data_dir, 'tumors.npy')
         if os.path.exists(tumors_path):
             tumors_data = np.load(tumors_path, allow_pickle=True)
             if len(tumors_data) > 850:
@@ -617,10 +686,10 @@ class TumorAnalyzer:
                 return tumors_data.tolist()
             else:
                 print(f"tumors.npy found but only {len(tumors_data)} tumors. Loading data.")
-                self.load_data(data_folder, parallel=parallel)
+                self.load_data(data_dir, parallel=parallel)
         else:
             print("tumors.npy not found. Loading data.")
-            self.load_data(data_folder, parallel=parallel)
+            self.load_data(data_dir, parallel=parallel)
 
         if save:
             if not os.path.exists(save_folder):
