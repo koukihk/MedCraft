@@ -402,9 +402,9 @@ def main_worker(gpu, args):
     if args.ellipsoid:
         start_time = time.time()
         analyzer = TumorAnalyzer()
-        data = analyzer.get_all_tumors('datafolds/04_LiTS', 'datafolds/04_LiTS', False, True)
-        data = np.array([tumor.position for tumor in data])
-        ellipsoid_model = EllipsoidFitter(data)
+        tumor_data = analyzer.get_all_tumors('datafolds/04_LiTS', 'datafolds/04_LiTS', False, True)
+        tumor_data = np.array([tumor.position for tumor in tumor_data])
+        ellipsoid_model = EllipsoidFitter(tumor_data)
         model_name = 'ellipsoid'
         end_time = time.time()
         duration = end_time - start_time

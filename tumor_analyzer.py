@@ -21,30 +21,30 @@ from tqdm import tqdm
 
 
 class EllipsoidFitter:
-    def __init__(self, data):
+    def __init__(self, tumor_data):
         """
         Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
         """
-        self.data = data
-        self.filtered_data = self._remove_outliers(data)
+        self.tumor_data = tumor_data
+        self.filtered_data = self._remove_outliers(tumor_data)
         self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
 
-    def _remove_outliers(self, data):
+    def _remove_outliers(self, tumor_data):
         """
         Remove outliers to keep at least 95% of the data.
         """
-        mean = np.mean(data, axis=0)
-        std = np.std(data, axis=0)
-        filtered_data = data[np.all(np.abs(data - mean) <= 2 * std, axis=1)]
+        mean = np.mean(tumor_data, axis=0)
+        std = np.std(tumor_data, axis=0)
+        filtered_data = tumor_data[np.all(np.abs(tumor_data - mean) <= 2 * std, axis=1)]
         return filtered_data
 
-    def _fit_ellipsoid(self, data):
+    def _fit_ellipsoid(self, tumor_data):
         """
         Fit an ellipsoid to the given data using PCA.
         """
         pca = PCA(n_components=3)
-        pca.fit(data)
-        center = np.mean(data, axis=0)
+        pca.fit(tumor_data)
+        center = np.mean(tumor_data, axis=0)
 
         axes = pca.components_
         variances = pca.explained_variance_
@@ -680,12 +680,12 @@ class TumorAnalyzer:
     def get_all_tumors(self, data_dir, save_folder, save=False, parallel=True):
         tumors_path = os.path.join(data_dir, 'tumors.npy')
         if os.path.exists(tumors_path):
-            tumors_data = np.load(tumors_path, allow_pickle=True)
-            if len(tumors_data) > 850:
-                print(f"tumors.npy found with {len(tumors_data)} tumors. Skipping data loading.")
-                return tumors_data.tolist()
+            tumor_data = np.load(tumors_path, allow_pickle=True)
+            if len(tumor_data) > 850:
+                print(f"tumors.npy found with {len(tumor_data)} tumors. Skipping data loading.")
+                return tumor_data.tolist()
             else:
-                print(f"tumors.npy found but only {len(tumors_data)} tumors. Loading data.")
+                print(f"tumors.npy found but only {len(tumor_data)} tumors. Loading data.")
                 self.load_data(data_dir, parallel=parallel)
         else:
             print("tumors.npy not found. Loading data.")
