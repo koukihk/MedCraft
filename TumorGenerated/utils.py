@@ -119,8 +119,8 @@ def get_absolute_coordinates(relative_coordinates, original_shape, target_volume
 
 def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
     if gmm_model is None:
-        potential_points = random_select(mask_scan)
-        return potential_points
+        potential_point = random_select(mask_scan)
+        return potential_point
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
@@ -137,24 +137,27 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
 
     loop_count = 0
     while loop_count < max_attempts:
-        potential_points = gmm_model.sample(1)[0][0]
-        potential_points = get_absolute_coordinates(potential_points, liver_mask.shape, target_volume_shape,
+        potential_point = gmm_model.sample(1)[0][0]
+        if any(coord < -10 for coord in potential_point):
+            loop_count += 1
+            continue
+        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume_shape,
                                                     start)
-        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
-        if mask_scan[tuple(potential_points)] == 1:
+        potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
+        if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_points):
-                return potential_points
+            if not is_edge_point(mask_scan, potential_point):
+                return potential_point
 
         loop_count += 1
 
-    potential_points = random_select(mask_scan)
-    return potential_points
+    potential_point = random_select(mask_scan)
+    return potential_point
 
 def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     if ellipsoid_model is None:
-        potential_points = random_select(mask_scan)
-        return potential_points
+        potential_point = random_select(mask_scan)
+        return potential_point
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
@@ -171,19 +174,22 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
 
     loop_count = 0
     while loop_count < max_attempts:
-        potential_points = ellipsoid_model.get_random_point()
-        potential_points = get_absolute_coordinates(potential_points, liver_mask.shape, target_volume_shape,
+        potential_point = ellipsoid_model.get_random_point()
+        if any(coord < -10 for coord in potential_point):
+            loop_count += 1
+            continue
+        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume_shape,
                                                     start)
-        potential_points = np.clip(potential_points, 0, np.array(mask_scan.shape) - 1).astype(int)
-        if mask_scan[tuple(potential_points)] == 1:
+        potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
+        if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_points):
-                return potential_points
+            if not is_edge_point(mask_scan, potential_point):
+                return potential_point
 
         loop_count += 1
 
-    potential_points = random_select(mask_scan)
-    return potential_points
+    potential_point = random_select(mask_scan)
+    return potential_point
 
 def is_edge_point(mask_scan, potential_points, neighborhood_size=(3, 3, 3), threshold=5):
     # Define the boundaries of the neighborhood around the potential point

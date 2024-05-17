@@ -21,30 +21,30 @@ from tqdm import tqdm
 
 
 class EllipsoidFitter:
-    def __init__(self, tumor_data):
+    def __init__(self, data):
         """
         Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
         """
-        self.tumor_data = tumor_data
-        self.filtered_data = self._remove_outliers(tumor_data)
+        self.data = data
+        self.filtered_data = self._remove_outliers(data)
         self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
 
-    def _remove_outliers(self, tumor_data):
+    def _remove_outliers(self, data):
         """
         Remove outliers to keep at least 95% of the data.
         """
-        mean = np.mean(tumor_data, axis=0)
-        std = np.std(tumor_data, axis=0)
-        filtered_data = tumor_data[np.all(np.abs(tumor_data - mean) <= 2 * std, axis=1)]
+        mean = np.mean(data, axis=0)
+        std = np.std(data, axis=0)
+        filtered_data = data[np.all(np.abs(data - mean) <= 2 * std, axis=1)]
         return filtered_data
 
-    def _fit_ellipsoid(self, tumor_data):
+    def _fit_ellipsoid(self, data):
         """
         Fit an ellipsoid to the given data using PCA.
         """
         pca = PCA(n_components=3)
-        pca.fit(tumor_data)
-        center = np.mean(tumor_data, axis=0)
+        pca.fit(data)
+        center = np.mean(data, axis=0)
 
         axes = pca.components_
         variances = pca.explained_variance_
@@ -57,11 +57,18 @@ class EllipsoidFitter:
         """
         Generate a random point inside the fitted ellipsoid.
         """
-        u = np.random.normal(0, 1, 3)
-        norm = np.linalg.norm(u)
-        u = u / norm
+        phi = np.random.uniform(0, 2 * np.pi)
+        costheta = np.random.uniform(-1, 1)
+        u = np.random.uniform(0, 1)
 
-        random_point = self.center + np.dot(self.axes.T, u * self.radii)
+        theta = np.arccos(costheta)
+        r = u ** (1 / 3)
+
+        x = r * np.sin(theta) * np.cos(phi)
+        y = r * np.sin(theta) * np.sin(phi)
+        z = r * np.cos(theta)
+
+        random_point = np.dot([x, y, z], self.axes.T * self.radii) + self.center
         return random_point
 
     def plot_ellipsoid(self):
@@ -85,6 +92,24 @@ class EllipsoidFitter:
 
         ax.plot_wireframe(x, y, z, color='r', alpha=0.1)
         plt.show()
+
+    def get_ellipsoid_equation(self):
+        """
+        Get the mathematical equation of the fitted ellipsoid.
+        """
+        inv_radii_squared = 1.0 / (self.radii ** 2)
+        equation = "Ellipsoid equation:\n"
+        for i in range(3):
+            term = f"(({self.axes[i, 0]} * (x - {self.center[0]}) + " \
+                   f"{self.axes[i, 1]} * (y - {self.center[1]}) + " \
+                   f"{self.axes[i, 2]} * (z - {self.center[2]}))^2) / " \
+                   f"{1.0 / inv_radii_squared[i]}"
+            if i < 2:
+                term += " + "
+            else:
+                term += " = 1"
+            equation += term + "\n"
+        return equation
 
 
 class GMMPlotter:
