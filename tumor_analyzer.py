@@ -274,12 +274,9 @@ class TumorAnalyzer:
         self.gmm_model_non_tiny = None
         self.gmm_flag = False
         self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
-        self.healthy_median_size = (253, 215, 162)
-        self.unhealthy_median_size = (378, 229, 107)
-        self.healthy_mean_size = (287, 242, 154)
-        self.unhealthy_mean_size = (282, 244, 143)
-        self.target_spacing = (0.86950004, 0.86950004, 0.923077)
-        self.target_volume = self.healthy_mean_size
+        self.healthy_mean_volume = (287, 242, 154)
+        self.unhealthy_mean_volume = (282, 244, 143)
+        self.target_volume = self.unhealthy_mean_volume
 
     def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, cov_type='diag', tol=0.00001, max_iter=500,
                       early_stopping=True, patience=3):
@@ -360,7 +357,7 @@ class TumorAnalyzer:
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
 
-        tumors = TumorAnalyzer.analyze_tumors(label_path, (287, 242, 154), 2)
+        tumors = TumorAnalyzer.analyze_tumors(label_path, (282, 244, 143), 2)
         return tumors
 
     def load_data(self, data_dir, parallel=False):
@@ -659,7 +656,7 @@ class TumorAnalyzer:
         return np.round(new_volume).astype(int)
 
     @staticmethod
-    def analyze_tumors(label_path, target_volume=(287, 242, 154), tumor_label=2):
+    def analyze_tumors(label_path, target_volume=(282, 244, 143), tumor_label=2):
         """
         Analyzes tumor information from label data.
         """

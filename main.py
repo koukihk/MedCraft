@@ -385,7 +385,7 @@ def main_worker(gpu, args):
         cov_type = 'diag'
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
-        analyzer.gmm_starter('/share/home/ncu22/DiffTumor/datafolds/10_Decathlon/Task03_Liver',
+        analyzer.gmm_starter('../DiffTumor/datafolds/10_Decathlon/Task03_Liver',
                              optimal_components, cov_type, args.gmm_split, args.gmm_es, True)
         if args.gmm_split:
             gmm_list.append(analyzer.get_gmm_model('tiny'))
@@ -401,7 +401,9 @@ def main_worker(gpu, args):
     if args.ellipsoid:
         start_time = time.time()
         analyzer = TumorAnalyzer()
-        tumor_data = analyzer.get_all_tumors('datafolds/04_LiTS', 'datafolds/04_LiTS', False, True)
+        tumor_data = analyzer.get_all_tumors('../DiffTumor/datafolds/10_Decathlon/Task03_Liver',
+                                             '../DiffTumor/datafolds/10_Decathlon/Task03_Liver',
+                                             False, True)
         tumor_data = np.array([tumor.position for tumor in tumor_data])
         ellipsoid_model = EllipsoidFitter(tumor_data)
         model_name = 'ellipsoid'
