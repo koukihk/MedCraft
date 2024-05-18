@@ -350,28 +350,24 @@ class TumorAnalyzer:
             self.gmm_model.fit(train_positions)
 
     @staticmethod
-    def get_data_paths(data_dir, ct_file):
-        image_subfolders = ["imagesTr", "img"]
-        label_subfolders = ["labelsTr", "label"]
-
-        def get_subfolder_path(subfolder_names, filename):
-            for subfolder in subfolder_names:
-                potential_path = os.path.join(data_dir, subfolder, filename)
-                if os.path.exists(potential_path):
-                    return potential_path
-            return None
-
-        img_path = get_subfolder_path(image_subfolders, ct_file)
-        label_path = get_subfolder_path(label_subfolders, ct_file)
-
-        if img_path and label_path:
-            return img_path, label_path
+    def get_subdirectory(data_dir):
+        # Check which pair of subdirectories exists
+        if os.path.isdir(os.path.join(data_dir, "imagesTr")) and os.path.isdir(os.path.join(data_dir, "labelsTr")):
+            img_subdir = "imagesTr"
+            label_subdir = "labelsTr"
+        elif os.path.isdir(os.path.join(data_dir, "img")) and os.path.isdir(os.path.join(data_dir, "label")):
+            img_subdir = "img"
+            label_subdir = "label"
         else:
-            raise FileNotFoundError("Could not find image or label path.")
+            img_subdir = ""
+            label_subdir = ""
+        return img_subdir, label_subdir
 
     @staticmethod
     def process_file(ct_file, data_dir):
-        img_path, label_path = TumorAnalyzer.get_data_paths(data_dir, ct_file)
+        img_subdir, label_subdir = TumorAnalyzer.get_subdirectory(data_dir)
+        img_path = os.path.join(data_dir, img_subdir, ct_file)
+        label_path = os.path.join(data_dir, label_subdir, ct_file)
 
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
@@ -383,7 +379,8 @@ class TumorAnalyzer:
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
-        ct_files = sorted(os.listdir(os.path.join(data_dir, "labelsTr")))
+        _, label_subdir = TumorAnalyzer.get_subdirectory(data_dir)
+        ct_files = sorted(os.listdir(os.path.join(data_dir, label_subdir)))
         expected_count = len(ct_files) // 2 - len(self.healthy_ct)
         ct_files = [ct_file for ct_file in ct_files
                     if not ct_file.startswith("._")
