@@ -354,8 +354,8 @@ class TumorAnalyzer:
 
     @staticmethod
     def process_file(ct_file, data_dir):
-        img_path = os.path.join(data_dir, "img", ct_file)
-        label_path = os.path.join(data_dir, "label", ct_file)
+        img_path = os.path.join(data_dir, "imagesTr", ct_file)
+        label_path = os.path.join(data_dir, "labelsTr", ct_file)
 
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
@@ -367,7 +367,7 @@ class TumorAnalyzer:
         """
         Loads CT scan images and corresponding tumor labels from the specified data folder.
         """
-        ct_files = sorted(os.listdir(os.path.join(data_dir, "label")))
+        ct_files = sorted(os.listdir(os.path.join(data_dir, "labelsTr")))
         expected_count = len(ct_files) // 2 - len(self.healthy_ct)
         ct_files = [ct_file for ct_file in ct_files
                     if not ct_file.startswith("._")

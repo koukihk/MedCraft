@@ -18,9 +18,6 @@ def check_nii_metadata(file_path):
         print("An error occurred:", e)
 
 
-import nibabel as nib
-
-
 def compare_nii_metadata(file_path1, file_path2):
     try:
         img1 = nib.load(file_path1)
@@ -60,6 +57,6 @@ def compare_nii_metadata(file_path1, file_path2):
         print("An error occurred:", e)
 
 
-file_path1 = "/share/home/ncu_418000230020/SyntheticTumors/synt/medium/image/synt_liver_91.nii.gz"
-file_path2 = "/share/home/ncu_418000230020/SyntheticTumors/datafolds/04_LiTS/img/liver_91.nii.gz"
+file_path1 = "/share/home/ncu22/SyntheticTumors/datafolds/04_LiTS/label/liver_49.nii.gz"
+file_path2 = "/share/home/ncu22/SyntheticTumors/datafolds/04_LiTS/label/liver_103.nii.gz"
 compare_nii_metadata(file_path1, file_path2)
