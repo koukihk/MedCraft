@@ -107,14 +107,11 @@ def get_absolute_coordinates(relative_coordinates, original_shape, target_volume
     absolute_y = relative_coordinates[1] * y_ratio
     absolute_z = relative_coordinates[2] * z_ratio
 
-    # liver_indices = np.argwhere(liver_mask == 1)
-    # min_x, min_y, min_z = np.min(liver_indices, axis=0)
-
     absolute_x += start[0]
     absolute_y += start[1]
     absolute_z += start[2]
 
-    return np.array([absolute_x, absolute_y, absolute_z])
+    return np.array([absolute_x, absolute_y, absolute_z], dtype=float)
 
 
 def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
