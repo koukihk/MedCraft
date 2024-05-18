@@ -350,9 +350,28 @@ class TumorAnalyzer:
             self.gmm_model.fit(train_positions)
 
     @staticmethod
+    def get_data_paths(data_dir, ct_file):
+        image_subfolders = ["imagesTr", "img"]
+        label_subfolders = ["labelsTr", "label"]
+
+        def get_subfolder_path(subfolder_names, filename):
+            for subfolder in subfolder_names:
+                potential_path = os.path.join(data_dir, subfolder, filename)
+                if os.path.exists(potential_path):
+                    return potential_path
+            return None
+
+        img_path = get_subfolder_path(image_subfolders, ct_file)
+        label_path = get_subfolder_path(label_subfolders, ct_file)
+
+        if img_path and label_path:
+            return img_path, label_path
+        else:
+            raise FileNotFoundError("Could not find image or label path.")
+
+    @staticmethod
     def process_file(ct_file, data_dir):
-        img_path = os.path.join(data_dir, "imagesTr", ct_file)
-        label_path = os.path.join(data_dir, "labelsTr", ct_file)
+        img_path, label_path = TumorAnalyzer.get_data_paths(data_dir, ct_file)
 
         if not (os.path.isfile(img_path) and os.path.isfile(label_path)):
             return [], []
