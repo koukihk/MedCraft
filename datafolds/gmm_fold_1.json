@@ -483,96 +483,96 @@
     ],
     "validation":[
         {
-            "image": "04_LiTS/img/liver_103.nii.gz",
-            "label": "04_LiTS/label/liver_103.nii.gz"
+            "image": "img/liver_103.nii.gz",
+            "label": "label/liver_103.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_116.nii.gz",
-            "label": "04_LiTS/label/liver_116.nii.gz"
+            "image": "img/liver_116.nii.gz",
+            "label": "label/liver_116.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_100.nii.gz",
-            "label": "04_LiTS/label/liver_100.nii.gz"
+            "image": "img/liver_100.nii.gz",
+            "label": "label/liver_100.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_49.nii.gz",
-            "label": "04_LiTS/label/liver_49.nii.gz"
+            "image": "img/liver_49.nii.gz",
+            "label": "label/liver_49.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_14.nii.gz",
-            "label": "04_LiTS/label/liver_14.nii.gz"
+            "image": "img/liver_14.nii.gz",
+            "label": "label/liver_14.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_17.nii.gz",
-            "label": "04_LiTS/label/liver_17.nii.gz"
+            "image": "img/liver_17.nii.gz",
+            "label": "label/liver_17.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_65.nii.gz",
-            "label": "04_LiTS/label/liver_65.nii.gz"
+            "image": "img/liver_65.nii.gz",
+            "label": "label/liver_65.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_57.nii.gz",
-            "label": "04_LiTS/label/liver_57.nii.gz"
+            "image": "img/liver_57.nii.gz",
+            "label": "label/liver_57.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_101.nii.gz",
-            "label": "04_LiTS/label/liver_101.nii.gz"
+            "image": "img/liver_101.nii.gz",
+            "label": "label/liver_101.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_16.nii.gz",
-            "label": "04_LiTS/label/liver_16.nii.gz"
+            "image": "img/liver_16.nii.gz",
+            "label": "label/liver_16.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_123.nii.gz",
-            "label": "04_LiTS/label/liver_123.nii.gz"
+            "image": "img/liver_123.nii.gz",
+            "label": "label/liver_123.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_85.nii.gz",
-            "label": "04_LiTS/label/liver_85.nii.gz"
+            "image": "img/liver_85.nii.gz",
+            "label": "label/liver_85.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_48.nii.gz",
-            "label": "04_LiTS/label/liver_48.nii.gz"
+            "image": "img/liver_48.nii.gz",
+            "label": "label/liver_48.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_92.nii.gz",
-            "label": "04_LiTS/label/liver_92.nii.gz"
+            "image": "img/liver_92.nii.gz",
+            "label": "label/liver_92.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_67.nii.gz",
-            "label": "04_LiTS/label/liver_67.nii.gz"
+            "image": "img/liver_67.nii.gz",
+            "label": "label/liver_67.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_70.nii.gz",
-            "label": "04_LiTS/label/liver_70.nii.gz"
+            "image": "img/liver_70.nii.gz",
+            "label": "label/liver_70.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_51.nii.gz",
-            "label": "04_LiTS/label/liver_51.nii.gz"
+            "image": "img/liver_51.nii.gz",
+            "label": "label/liver_51.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_3.nii.gz",
-            "label": "04_LiTS/label/liver_3.nii.gz"
+            "image": "img/liver_3.nii.gz",
+            "label": "label/liver_3.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_74.nii.gz",
-            "label": "04_LiTS/label/liver_74.nii.gz"
+            "image": "img/liver_74.nii.gz",
+            "label": "label/liver_74.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_99.nii.gz",
-            "label": "04_LiTS/label/liver_99.nii.gz"
+            "image": "img/liver_99.nii.gz",
+            "label": "label/liver_99.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_126.nii.gz",
-            "label": "04_LiTS/label/liver_126.nii.gz"
+            "image": "img/liver_126.nii.gz",
+            "label": "label/liver_126.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_81.nii.gz",
-            "label": "04_LiTS/label/liver_81.nii.gz"
+            "image": "img/liver_81.nii.gz",
+            "label": "label/liver_81.nii.gz"
         },
         {
-            "image": "04_LiTS/img/liver_2.nii.gz",
-            "label": "04_LiTS/label/liver_2.nii.gz"
+            "image": "img/liver_2.nii.gz",
+            "label": "label/liver_2.nii.gz"
         }
     ]
 }
