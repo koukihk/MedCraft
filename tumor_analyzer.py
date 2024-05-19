@@ -4,12 +4,14 @@ import pickle
 import random
 import string
 import warnings
+from datetime import datetime
 from multiprocessing import Pool, cpu_count
 
 import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import plotly.graph_objs as go
+import plotly.io as pio
 import plotly.offline as pyo
 from scipy import interpolate
 from scipy import ndimage
@@ -29,16 +31,23 @@ class EllipsoidFitter:
         self.filtered_data = self._remove_outliers(data)
         self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
 
-    def _remove_outliers(self, data):
+    def _remove_outliers(self, data, std_multiplier=2.33):
         """
         Remove outliers to keep at least 95% of the data.
+
+        Parameters:
+        - data: numpy array of shape (n_samples, n_features), the data from which to remove outliers.
+        - std_multiplier: float, the number of standard deviations to use for the cutoff. Default is 2.5.
+
+        Returns:
+        - filtered_data: numpy array, the data with outliers removed.
         """
         mean = np.mean(data, axis=0)
         std = np.std(data, axis=0)
-        filtered_data = data[np.all(np.abs(data - mean) <= 2 * std, axis=1)]
+        filtered_data = data[np.all(np.abs(data - mean) <= std_multiplier * std, axis=1)]
         return filtered_data
 
-    def _fit_ellipsoid(self, data):
+    def _fit_ellipsoid(self, data, scale_factor=2.87):
         """
         Fit an ellipsoid to the given data using PCA.
         """
@@ -49,7 +58,7 @@ class EllipsoidFitter:
         axes = pca.components_
         variances = pca.explained_variance_
 
-        radii = np.sqrt(variances) * 3
+        radii = np.sqrt(variances) * scale_factor
 
         return center, axes, radii
 
@@ -92,6 +101,78 @@ class EllipsoidFitter:
 
         ax.plot_wireframe(x, y, z, color='r', alpha=0.1)
         plt.show()
+
+    def plot_interactive_ellipsoid(self, folder='ellipsoid_plot'):
+        """
+        Plot the fitted ellipsoid along with the given data points using Plotly and save to an HTML file in the specified folder.
+        """
+        # Ensure the target folder exists
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        # Generate a unique filename
+        identifier = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = os.path.join(folder, f"ellipsoid_plot_{identifier}.html")
+
+        # Identify outliers
+        filtered_data_set = set(map(tuple, self.filtered_data))
+        outliers = np.array([point for point in self.data if tuple(point) not in filtered_data_set])
+
+        # Create scatter plot for filtered data points
+        filtered_scatter = go.Scatter3d(
+            x=self.filtered_data[:, 0],
+            y=self.filtered_data[:, 1],
+            z=self.filtered_data[:, 2],
+            mode='markers',
+            marker=dict(size=2, color='blue'),
+            name='Filtered Data Points'
+        )
+
+        # Create scatter plot for outliers
+        outlier_scatter = go.Scatter3d(
+            x=outliers[:, 0],
+            y=outliers[:, 1],
+            z=outliers[:, 2],
+            mode='markers',
+            marker=dict(size=2, color='red'),
+            name='Outliers'
+        )
+
+        # Create the ellipsoid
+        u = np.linspace(0, 2 * np.pi, 100)
+        v = np.linspace(0, np.pi, 100)
+        x = self.radii[0] * np.outer(np.cos(u), np.sin(v))
+        y = self.radii[1] * np.outer(np.sin(u), np.sin(v))
+        z = self.radii[2] * np.outer(np.ones_like(u), np.cos(v))
+
+        for i in range(len(x)):
+            for j in range(len(x)):
+                [x[i, j], y[i, j], z[i, j]] = np.dot([x[i, j], y[i, j], z[i, j]], self.axes) + self.center
+
+        # Create mesh for ellipsoid
+        ellipsoid = go.Surface(
+            x=x, y=y, z=z,
+            opacity=0.5,
+            colorscale='reds',
+            showscale=False,
+            name='Ellipsoid'
+        )
+
+        # Layout for the plot
+        layout = go.Layout(
+            scene=dict(
+                xaxis=dict(title='X'),
+                yaxis=dict(title='Y'),
+                zaxis=dict(title='Z')
+            ),
+            title='Ellipsoid Fit with Data Points'
+        )
+
+        # Create figure and add scatter plots and ellipsoid
+        fig = go.Figure(data=[filtered_scatter, outlier_scatter, ellipsoid], layout=layout)
+
+        # Save the plot as an HTML file
+        pio.write_html(fig, file=filename, auto_open=False)
 
     def get_ellipsoid_equation(self):
         """
@@ -274,9 +355,7 @@ class TumorAnalyzer:
         self.gmm_model_non_tiny = None
         self.gmm_flag = False
         self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
-        self.healthy_mean_volume = (287, 242, 154)
-        self.unhealthy_mean_volume = (282, 244, 143)
-        self.target_volume = self.unhealthy_mean_volume
+        self.target_volume = (282, 244, 143)
 
     def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, cov_type='diag', tol=0.00001, max_iter=500,
                       early_stopping=True, patience=3):
