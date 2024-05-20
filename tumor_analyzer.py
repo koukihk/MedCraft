@@ -16,6 +16,7 @@ import plotly.offline as pyo
 from scipy import interpolate
 from scipy import ndimage
 from scipy.spatial.distance import cdist
+from scipy.spatial.distance import mahalanobis
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import train_test_split
@@ -23,44 +24,53 @@ from tqdm import tqdm
 
 
 class EllipsoidFitter:
-    def __init__(self, data):
+    def __init__(self, data, std_multiplier=2.55, scale_factors=[2.4, 2.65, 2.65], center_offset=(-6.5, -6.5, 0)):
         """
         Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
         """
         self.data = data
+        self.std_multiplier = std_multiplier
+        self.scale_factors = scale_factors
+        self.center_offset = np.array(center_offset)
         self.filtered_data = self._remove_outliers(data)
         self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
+        self._adjust_center()
 
-    def _remove_outliers(self, data, std_multiplier=2.33):
+    def _remove_outliers(self, data):
         """
-        Remove outliers to keep at least 95% of the data.
-
-        Parameters:
-        - data: numpy array of shape (n_samples, n_features), the data from which to remove outliers.
-        - std_multiplier: float, the number of standard deviations to use for the cutoff. Default is 2.5.
-
-        Returns:
-        - filtered_data: numpy array, the data with outliers removed.
+        Remove outliers to keep at least 98% of the data.
         """
         mean = np.mean(data, axis=0)
-        std = np.std(data, axis=0)
-        filtered_data = data[np.all(np.abs(data - mean) <= std_multiplier * std, axis=1)]
+        cov_matrix = np.cov(data, rowvar=False)
+        inv_cov_matrix = np.linalg.inv(cov_matrix)
+        mahalanobis_distances = [mahalanobis(sample, mean, inv_cov_matrix) for sample in data]
+        threshold = np.percentile(mahalanobis_distances, 98)
+        filtered_data = data[np.array(mahalanobis_distances) <= threshold]
         return filtered_data
 
-    def _fit_ellipsoid(self, data, scale_factor=2.87):
+    def _fit_ellipsoid(self, data):
         """
         Fit an ellipsoid to the given data using PCA.
         """
         pca = PCA(n_components=3)
         pca.fit(data)
-        center = np.mean(data, axis=0)
+        center = np.mean(data, axis=0) + self.center_offset
 
         axes = pca.components_
         variances = pca.explained_variance_
 
-        radii = np.sqrt(variances) * scale_factor
+        radii = np.sqrt(variances) * self.scale_factors
 
         return center, axes, radii
+
+    def _adjust_center(self):
+        """
+        Adjust the ellipsoid center to ensure it doesn't cross the zero boundary.
+        """
+        for i in range(3):
+            min_boundary = self.center[i] - self.radii[i]
+            if min_boundary < 0:
+                self.center[i] -= min_boundary  # Shift the center to the right
 
     def get_random_point(self):
         """
