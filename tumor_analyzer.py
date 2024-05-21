@@ -19,7 +19,7 @@ from scipy.spatial.distance import cdist
 from scipy.spatial.distance import mahalanobis
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
 from tqdm import tqdm
 
 
@@ -34,7 +34,7 @@ class EllipsoidFitter:
         self.center_offset = np.array(center_offset)
         self.filtered_data = self._remove_outliers(data)
         self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
-        self._adjust_center()
+        # self._adjust_center()
 
     def _remove_outliers(self, data):
         """
@@ -206,7 +206,7 @@ class EllipsoidFitter:
 
 class GMMPlotter:
     @staticmethod
-    def gmm2plt(gmm_model, data, model_type='global', num_samples=700, num_points=70):
+    def plot_gmm(gmm_model, data, model_type='global', num_samples=700, num_points=70):
         """
         Plot a 3D visualization of a Gaussian Mixture Model (GMM) using Plotly.
 
@@ -368,76 +368,49 @@ class TumorAnalyzer:
         self.healthy_ct = [32, 34, 38, 41, 47, 87, 89, 91, 105, 106, 114, 115, 119]
         self.target_volume = (282, 244, 143)
 
-    def fit_gmm_model(self, train_tumors, val_tumors, optimal_components, cov_type='diag', tol=0.00001, max_iter=500,
-                      early_stopping=True, patience=3):
+    def fit_gmm_model(self, tumors, optimal_components, cov_type='diag', tol=0.00001, max_iter=500, n_splits=5,
+                      use_cv=True):
         """
         Fits a Gaussian Mixture Model to the given data.
         """
-        train_positions = np.array([tumor.position for tumor in train_tumors])
-        val_positions = np.array([tumor.position for tumor in val_tumors])
+        positions = np.array([tumor.position for tumor in tumors])
 
-        # debug
-        n_components_range = range(1, 6)
-        aic_scores = []
-        bic_scores = []
+        if use_cv:
+            kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+            best_score = float('-inf')
+            best_model = None
 
-        for n_components in n_components_range:
-            gmm_debug = GaussianMixture(
-                n_components=n_components,
+            for train_index, val_index in kf.split(positions):
+                train_positions, val_positions = positions[train_index], positions[val_index]
+
+                gmm_model = GaussianMixture(
+                    n_components=optimal_components,
+                    covariance_type=cov_type,
+                    init_params='k-means++',
+                    tol=tol,
+                    max_iter=max_iter
+                )
+
+                gmm_model.fit(train_positions)
+                val_score = gmm_model.score(val_positions)
+
+                if val_score > best_score:
+                    best_score = val_score
+                    best_model = gmm_model
+
+            # Save the best model
+            self.gmm_model = best_model
+            print("Best model selected with validation score: {}".format(best_score))
+        else:
+            self.gmm_model = GaussianMixture(
+                n_components=optimal_components,
                 covariance_type=cov_type,
                 init_params='k-means++',
                 tol=tol,
                 max_iter=max_iter
             )
-            debug_positions = np.concatenate((train_positions, val_positions))
-            gmm_debug.fit(debug_positions)
-            aic = gmm_debug.aic(debug_positions)
-            bic = gmm_debug.bic(debug_positions)
-            aic_scores.append(aic)
-            bic_scores.append(bic)
-
-            print(f"Number of components: {n_components}, AIC: {aic}, BIC: {bic}")
-
-        best_aic_idx = np.argmin(aic_scores)
-        best_bic_idx = np.argmin(bic_scores)
-        best_aic = n_components_range[best_aic_idx]
-        best_bic = n_components_range[best_bic_idx]
-
-        print("Best number of components based on AIC:", best_aic)
-        print("Best number of components based on BIC:", best_bic)
-
-        self.gmm_model = GaussianMixture(
-            n_components=optimal_components,
-            covariance_type=cov_type,
-            init_params='k-means++',
-            tol=tol,
-            max_iter=max_iter
-        )
-
-        if early_stopping:
-            best_score = float('-inf')
-            best_params = None
-            no_improvement_count = 0
-
-            for iter in range(max_iter):
-                self.gmm_model.fit(train_positions)
-                val_score = self.gmm_model.score(val_positions)
-
-                if val_score > best_score:
-                    best_score = val_score
-                    best_params = self.gmm_model.get_params()
-                    no_improvement_count = 0
-                else:
-                    no_improvement_count += 1
-
-                if early_stopping and no_improvement_count >= patience:
-                    print("Validation score did not improve for {} iterations. Rolling back to best model.".format(
-                        patience))
-                    self.gmm_model.set_params(**best_params)
-                    break
-        else:
-            train_positions = np.concatenate((train_positions, val_positions))
-            self.gmm_model.fit(train_positions)
+            self.gmm_model.fit(positions)
+            print("Model fitted without cross-validation.")
 
     @staticmethod
     def get_subdirectory(data_dir):
@@ -512,17 +485,8 @@ class TumorAnalyzer:
         print("Tumor type proportions:",
               ", ".join([f"{tumor_type}: {proportion:.2%}" for tumor_type, proportion in type_proportions.items()]))
 
-    def split_train_val(self, test_size=0.2, random_state=42):
-        """
-        Splits the tumor positions into training and validation sets.
-        """
-        tumors = self.all_tumors
-        train_tumors, val_tumors = train_test_split(tumors, test_size=test_size, random_state=random_state)
-
-        return train_tumors, val_tumors
-
     def gmm_starter(self, data_dir, optimal_components, cov_type='diag', split=False,
-                    early_stopping=True, parallel=False):
+                    use_cv=True, parallel=False):
         """
         Loads data, prepares training and validation sets, and fits GMM model with early stopping.
         """
@@ -558,18 +522,10 @@ class TumorAnalyzer:
             if split:
                 all_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type == 'tiny']
                 all_non_tiny_tumors = [tumor for tumor in self.all_tumors if tumor.type != 'tiny']
-                train_tiny_tumors, val_tiny_tumors = train_test_split(all_tiny_tumors, test_size=test_size,
-                                                                      random_state=random_state)
-                train_non_tiny_tumors, val_non_tiny_tumors = train_test_split(all_non_tiny_tumors, test_size=test_size,
-                                                                              random_state=random_state)
-
                 nc_tiny, nc_non_tiny = optimal_components
-
-                for tumor_type, train_tumors, val_tumors, nc in [("tiny", train_tiny_tumors, val_tiny_tumors, nc_tiny),
-                                                                 (
-                                                                 "non_tiny", train_non_tiny_tumors, val_non_tiny_tumors,
-                                                                 nc_non_tiny)]:
-                    self.fit_gmm_model(train_tumors, val_tumors, nc, cov_type, tol, max_iter, early_stopping, patience)
+                for tumor_type, tumors, nc in [("tiny", all_tiny_tumors, nc_tiny),
+                                               ("non_tiny", all_non_tiny_tumors, nc_non_tiny)]:
+                    self.fit_gmm_model(tumors, nc, cov_type, tol, max_iter, use_cv=use_cv)
                     gmm_model_name = f'gmm_model_{tumor_type}_{nc}_{generate_random_str()}.pkl'
                     with open(os.path.join('gmm', cov_type, gmm_model_name), 'wb') as f:
                         pickle.dump(self.gmm_model, f)
@@ -580,9 +536,8 @@ class TumorAnalyzer:
                     print(f"{tumor_type.capitalize()} GMM saved successfully: gmm/{cov_type}/{gmm_model_name}")
 
             else:
-                train_tumors, val_tumors = self.split_train_val(test_size=test_size, random_state=random_state)
                 nc = optimal_components[0]
-                self.fit_gmm_model(train_tumors, val_tumors, nc, cov_type, tol, max_iter, early_stopping, patience)
+                self.fit_gmm_model(self.all_tumors, nc, cov_type, tol, max_iter, use_cv=use_cv)
                 gmm_model_name = f'gmm_model_global_{nc}_{generate_random_str()}.pkl'
                 with open(os.path.join('gmm', cov_type, gmm_model_name), 'wb') as f:
                     pickle.dump(self.gmm_model, f)

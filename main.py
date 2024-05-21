@@ -38,7 +38,7 @@ parser.add_argument('--gen', action='store_true')  # only for saving synthetic C
 parser.add_argument('--gen_folder', default='normal')  # only for saving synthetic CT
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
-parser.add_argument('--gmm_es', action='store_true')
+parser.add_argument('--gmm_cv', action='store_true')
 parser.add_argument('--optimal_components', default='1', type=str)  # like '2,1'
 parser.add_argument('--ellipsoid', action='store_true')
 # parser.add_argument('--fold', default=0, type=int)
@@ -385,7 +385,7 @@ def main_worker(gpu, args):
         cov_type = 'diag'
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
-        analyzer.gmm_starter(args.val_dir, optimal_components, cov_type, args.gmm_split, args.gmm_es, True)
+        analyzer.gmm_starter(args.val_dir, optimal_components, cov_type, args.gmm_split, args.gmm_cv, True)
         if args.gmm_split:
             gmm_list.append(analyzer.get_gmm_model('tiny'))
             gmm_list.append(analyzer.get_gmm_model('non_tiny'))
