@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 
 class EllipsoidFitter:
-    def __init__(self, data, std_multiplier=2.55, scale_factors=[2.4, 2.65, 2.65], center_offset=(-6.5, -6.5, 0)):
+    def __init__(self, data, std_multiplier=2.55, scale_factors=[2.33, 2.51, 2.87], center_offset=(-10.5, -8.5, -1)):
         """
         Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
         """
@@ -114,7 +114,8 @@ class EllipsoidFitter:
 
     def plot_interactive_ellipsoid(self, folder='ellipsoid_plot'):
         """
-        Plot the fitted ellipsoid along with the given data points using Plotly and save to an HTML file in the specified folder.
+        Plot the fitted ellipsoid along with the given data points using Plotly and save to an HTML file
+        in the specified folder.
         """
         # Ensure the target folder exists
         if not os.path.exists(folder):
