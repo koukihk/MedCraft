@@ -1,23 +1,20 @@
-import os
-import time
-import shutil
 import json
+import os
+import shutil
+import sys
+import time
+
 # import tempfile
 # import matplotlib.pyplot as plt
 import numpy as np
+import scipy.ndimage as ndimage
 # import json
 import torch
-from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import GradScaler, autocast  # native AMP
-import torch.nn.parallel
 import torch.distributed as dist
-import torch.nn.functional as F
-import torch.multiprocessing as mp
+import torch.nn.parallel
 import torch.utils.data.distributed
-import scipy.ndimage as ndimage
-from monai.transforms import AsDiscrete, Activations, Compose
-
-import sys
+from torch.cuda.amp import GradScaler, autocast  # native AMP
+from torch.utils.tensorboard import SummaryWriter
 
 sys.path.append('../../pipextra/lib/python3.6/site-packages')  # add missing packages
 

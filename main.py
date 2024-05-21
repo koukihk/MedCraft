@@ -39,7 +39,7 @@ parser.add_argument('--gen_folder', default='normal')  # only for saving synthet
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_es', action='store_true')
-parser.add_argument('--optimal_components', default='4', type=str)  # like '5,2'
+parser.add_argument('--optimal_components', default='1', type=str)  # like '2,1'
 parser.add_argument('--ellipsoid', action='store_true')
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)

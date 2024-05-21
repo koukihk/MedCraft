@@ -1,20 +1,21 @@
-import os, time, csv
+import csv
+import os
+import time
+import warnings
+from functools import partial
+
+import nibabel as nib
 import numpy as np
 import torch
-from sklearn.metrics import confusion_matrix
+from monai import transforms, data
+from monai.data import load_decathlon_datalist
+from monai.inferers import sliding_window_inference
+from monai.transforms import AsDiscreted, Compose, Invertd
 from scipy import ndimage
 from scipy.ndimage import label
-from functools import partial
 from surface_distance import compute_surface_distances, compute_surface_dice_at_tolerance
-import monai
-from monai.inferers import sliding_window_inference
-from monai.data import load_decathlon_datalist
-from monai.transforms import AsDiscrete, AsDiscreted, Compose, Invertd, SaveImaged
-from monai import transforms, data
-from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
-import nibabel as nib
 
-import warnings
+from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
 
 warnings.filterwarnings("ignore")
 
@@ -236,9 +237,9 @@ def main():
             row = [name, current_liver_dice, current_liver_nsd, current_tumor_dice, current_tumor_nsd]
             rows.append(row)
 
-            print(name, val_outputs[0].shape, \
+            print(name, val_outputs[0].shape,
                   'dice: [{:.3f}  {:.3f}]; nsd: [{:.3f}  {:.3f}]'.format(current_liver_dice, current_tumor_dice,
-                                                                         current_liver_nsd, current_tumor_nsd), \
+                                                                         current_liver_nsd, current_tumor_nsd),
                   'time {:.2f}s'.format(time.time() - start_time))
 
             # save the prediction
