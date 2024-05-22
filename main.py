@@ -382,7 +382,7 @@ def main_worker(gpu, args):
     if args.gmm:
         start_time = time.time()
         optimal_components = np.array(args.optimal_components.split(',')).astype(int)
-        cov_type = 'diag'
+        cov_type = 'tied'
         analyzer = TumorAnalyzer()
         # here we use LiTS and you can modify it
         analyzer.gmm_starter(args.val_dir, optimal_components, cov_type, args.gmm_split, args.gmm_cv, True)

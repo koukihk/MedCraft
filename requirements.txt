@@ -20,3 +20,4 @@ MedPy~=0.4.0
 torch~=1.11.0+cu113
 scikit-image~=0.18.3
 plotly~=5.22.0
+joblib~=1.4.0

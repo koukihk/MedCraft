@@ -1,10 +1,29 @@
 ### Tumor Generateion
 import random
-
+import pywt
+from noise import snoise3
 import cv2
 import elasticdeform
 import numpy as np
 from scipy.ndimage import gaussian_filter
+
+
+def generate_simplex_noise(mask_shape, freq=0.05, octaves=4, persistence=0.5):
+    x, y, z = np.mgrid[:mask_shape[0], :mask_shape[1], :mask_shape[2]]
+    x /= mask_shape[0] * freq
+    y /= mask_shape[1] * freq
+    z /= mask_shape[2] * freq
+
+    noise = np.zeros(mask_shape)
+    freq_mult = 1.0
+    amp_mult = 1.0
+    for _ in range(octaves):
+        noise += amp_mult * snoise3(x * freq_mult, y * freq_mult, z * freq_mult)
+        freq_mult *= 2
+        amp_mult *= persistence
+
+    noise = (noise - noise.min()) / (noise.max() - noise.min())
+    return noise
 
 
 def generate_prob_function(mask_shape):

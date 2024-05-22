@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 
 class EllipsoidFitter:
-    def __init__(self, data, std_multiplier=2.55, scale_factors=[2.33, 2.51, 2.87], center_offset=(-10.5, -8.5, -1)):
+    def __init__(self, data, std_multiplier=2.55, scale_factors=[2.33, 2.51, 2.87], center_offset=(-11.5, -8.0, -1.0)):
         """
         Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
         """
@@ -410,7 +410,8 @@ class TumorAnalyzer:
                 max_iter=max_iter
             )
             self.gmm_model.fit(positions)
-            print("Model fitted without cross-validation.")
+            val_score = self.gmm_model.score(positions)
+            print("Model fitted without cross-validation {}".format(val_score))
 
     @staticmethod
     def get_subdirectory(data_dir):
