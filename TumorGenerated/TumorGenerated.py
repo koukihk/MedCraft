@@ -43,7 +43,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
                 texture = get_predefined_texture_old(predefined_texture_shape, sigma_a, sigma_b)
-                texture = add_salt_and_pepper_noise(texture, salt_prob, pepper_prob)
+                texture = add_salt_and_pepper_noise(texture, salt_prob, pepper_prob, tumor_value=2, background_value=0)
                 # texture = apply_median_filter(texture, size=3)
                 self.textures.append(texture)
         print("All predefined texture have generated.")

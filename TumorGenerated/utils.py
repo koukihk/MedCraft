@@ -56,18 +56,18 @@ def generate_simplex_noise(mask_shape, freq=0.05, octaves=4, persistence=0.5, se
     return noise
 
 
-def add_salt_and_pepper_noise(image, salt_prob, pepper_prob):
+def add_salt_and_pepper_noise(image, salt_prob, pepper_prob, tumor_value=2, background_value=0):
     noisy_image = np.copy(image)
     num_salt = np.ceil(salt_prob * image.size)
     num_pepper = np.ceil(pepper_prob * image.size)
 
-    # Add Salt noise
+    # Add Salt noise (tumor_value)
     coords = [np.random.randint(0, i, int(num_salt)) for i in image.shape]
-    noisy_image[tuple(coords)] = 1
+    noisy_image[tuple(coords)] = tumor_value
 
-    # Add Pepper noise
+    # Add Pepper noise (background_value)
     coords = [np.random.randint(0, i, int(num_pepper)) for i in image.shape]
-    noisy_image[tuple(coords)] = 0
+    noisy_image[tuple(coords)] = background_value
 
     return noisy_image
 
