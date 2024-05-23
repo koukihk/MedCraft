@@ -1,29 +1,75 @@
 ### Tumor Generateion
 import random
 import pywt
-from noise import snoise3
+# from noise import snoise3
+# from numba import njit, prange
+from opensimplex import OpenSimplex
 import cv2
 import elasticdeform
 import numpy as np
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, median_filter
+from skimage.restoration import denoise_tv_chambolle
 
 
-def generate_simplex_noise(mask_shape, freq=0.05, octaves=4, persistence=0.5):
+def wavelet_filter(data, wavelet='db1', level=1):
+    coeffs = pywt.wavedecn(data, wavelet, mode='periodization', level=level)
+    coeffs_filtered = [coeffs[0]]  # Approximation coefficients remain unchanged
+
+    # Apply thresholding to detail coefficients
+    for detail_level in coeffs[1:]:
+        filtered_detail = {key: pywt.threshold(value, np.std(value), mode='soft') for key, value in
+                           detail_level.items()}
+        coeffs_filtered.append(filtered_detail)
+
+    filtered_data = pywt.waverecn(coeffs_filtered, wavelet, mode='periodization')
+    return filtered_data
+
+
+def apply_median_filter(image, size):
+    return median_filter(image, size=size)
+
+
+def generate_simplex_noise(mask_shape, freq=0.05, octaves=4, persistence=0.5, seed=None):
     x, y, z = np.mgrid[:mask_shape[0], :mask_shape[1], :mask_shape[2]]
-    x /= mask_shape[0] * freq
-    y /= mask_shape[1] * freq
-    z /= mask_shape[2] * freq
+    x = x.astype(float) / (mask_shape[0] * freq)
+    y = y.astype(float) / (mask_shape[1] * freq)
+    z = z.astype(float) / (mask_shape[2] * freq)
 
-    noise = np.zeros(mask_shape)
+    if seed is None:
+        seed = np.random.randint(0, 2**32 - 1)
+    simplex = OpenSimplex(seed=seed)
+
+    noise = np.zeros(mask_shape, dtype=float)
     freq_mult = 1.0
     amp_mult = 1.0
+
     for _ in range(octaves):
-        noise += amp_mult * snoise3(x * freq_mult, y * freq_mult, z * freq_mult)
+        noise += amp_mult * np.vectorize(simplex.noise3)(
+            x * freq_mult,
+            y * freq_mult,
+            z * freq_mult
+        )
         freq_mult *= 2
         amp_mult *= persistence
 
     noise = (noise - noise.min()) / (noise.max() - noise.min())
     return noise
+
+
+def add_salt_and_pepper_noise(image, salt_prob, pepper_prob):
+    noisy_image = np.copy(image)
+    num_salt = np.ceil(salt_prob * image.size)
+    num_pepper = np.ceil(pepper_prob * image.size)
+
+    # Add Salt noise
+    coords = [np.random.randint(0, i, int(num_salt)) for i in image.shape]
+    noisy_image[tuple(coords)] = 1
+
+    # Add Pepper noise
+    coords = [np.random.randint(0, i, int(num_pepper)) for i in image.shape]
+    noisy_image[tuple(coords)] = 0
+
+    return noisy_image
 
 
 def generate_prob_function(mask_shape):
@@ -72,10 +118,49 @@ def get_texture(mask_shape):
 
 
 # here we want to get predefined texutre:
-def get_predefined_texture(mask_shape, sigma_a, sigma_b):
+def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
     # uniform noise generate
-    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    a = np.random.uniform(0, 1, size=(mask_shape[0],mask_shape[1],mask_shape[2]))
     a_2 = gaussian_filter(a, sigma=sigma_a)
+    scale = np.random.uniform(0.19, 0.21)
+    base = np.random.uniform(0.04, 0.06)
+    a =  scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+
+    # sample once
+    random_sample = np.random.uniform(0, 1, size=(mask_shape[0],mask_shape[1],mask_shape[2]))
+    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
+    b = gaussian_filter(b, sigma_b)
+
+    # Scaling and clipping
+    u_0 = np.random.uniform(0.5, 0.55)
+    threshold_mask = b > 0.12    # this is for calculte the mean_0.2(b2)
+    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
+    Bj = np.clip(beta*b, 0, 1) # 目前是0-1区间
+
+    return Bj
+
+
+# here we want to get predefined texutre:
+def get_predefined_texture(mask_shape, sigma_a, sigma_b):
+    # Step 1: Uniform noise generate
+    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    # a = generate_simplex_noise(mask_shape, seed=42)
+
+    # Step 2: Nonlinear diffusion filtering
+    a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
+
+    # Step 3: Wavelet transform
+    coeffs = pywt.wavedec2(a_denoised, wavelet='haar', level=2)
+    coeffs[1:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[1:]]
+    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='haar')
+
+    # Normalize to 0-1
+    a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
+
+    # Step 4: Gaussian filter
+    # a_2 = gaussian_filter(a, sigma=sigma_a)
+    a_2 = gaussian_filter(a_wavelet_denoised, sigma=sigma_a)
+
     scale = np.random.uniform(0.19, 0.21)
     base = np.random.uniform(0.04, 0.06)
     a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
