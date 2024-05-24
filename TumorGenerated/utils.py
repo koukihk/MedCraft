@@ -36,7 +36,7 @@ def generate_simplex_noise(mask_shape, freq=0.05, octaves=4, persistence=0.5, se
     z = z.astype(float) / (mask_shape[2] * freq)
 
     if seed is None:
-        seed = np.random.randint(0, 2**32 - 1)
+        seed = np.random.randint(0, 2 ** 32 - 1)
     simplex = OpenSimplex(seed=seed)
 
     noise = np.zeros(mask_shape, dtype=float)
@@ -65,11 +65,15 @@ def add_salt_and_pepper_noise(image, salt_prob, pepper_prob, median_filter_size=
     num_salt = np.ceil(salt_prob * noisy_image.size)
     num_pepper = np.ceil(pepper_prob * noisy_image.size)
 
-    coords = [np.random.randint(0, s, int(num)) for s, num in zip(noisy_image.shape, (num_salt, num_pepper))]
-    noisy_image[tuple(coords[0])] = salt_value
-    noisy_image[tuple(coords[1])] = pepper_value
+    # Generate salt noise coordinates
+    salt_coords = [np.random.randint(0, dim, int(num_salt)) for dim in noisy_image.shape]
+    noisy_image[tuple(salt_coords)] = salt_value
 
-    # noisy_image = gaussian_filter(noisy_image, sigma=smoothing_sigma)
+    # Generate pepper noise coordinates
+    pepper_coords = [np.random.randint(0, dim, int(num_pepper)) for dim in noisy_image.shape]
+    noisy_image[tuple(pepper_coords)] = pepper_value
+
+    # Apply median filter to the noisy image
     noisy_image = median_filter(noisy_image, size=median_filter_size)
 
     return noisy_image
@@ -123,22 +127,22 @@ def get_texture(mask_shape):
 # here we want to get predefined texutre:
 def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
     # uniform noise generate
-    a = np.random.uniform(0, 1, size=(mask_shape[0],mask_shape[1],mask_shape[2]))
+    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
     a_2 = gaussian_filter(a, sigma=sigma_a)
     scale = np.random.uniform(0.19, 0.21)
     base = np.random.uniform(0.04, 0.06)
-    a =  scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
 
     # sample once
-    random_sample = np.random.uniform(0, 1, size=(mask_shape[0],mask_shape[1],mask_shape[2]))
+    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
     b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
     b = gaussian_filter(b, sigma_b)
 
     # Scaling and clipping
     u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12    # this is for calculte the mean_0.2(b2)
+    threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
     beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta*b, 0, 1) # 目前是0-1区间
+    Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
 
     return Bj
 
@@ -158,7 +162,8 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='haar')
 
     # Normalize to 0-1
-    a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
+    a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (
+                np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
 
     # Step 4: Gaussian filter
     # a_2 = gaussian_filter(a, sigma=sigma_a)
@@ -246,7 +251,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
             loop_count += 1
             continue
         potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume,
-                                                    start)
+                                                   start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
@@ -257,6 +262,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
 
     potential_point = random_select(mask_scan)
     return potential_point
+
 
 def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     if ellipsoid_model is None:
@@ -283,7 +289,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
             loop_count += 1
             continue
         potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume,
-                                                    start)
+                                                   start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
@@ -294,6 +300,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
 
     potential_point = random_select(mask_scan)
     return potential_point
+
 
 def is_edge_point(mask_scan, potential_points, neighborhood_size=(3, 3, 3), threshold=5):
     # Define the boundaries of the neighborhood around the potential point
@@ -339,6 +346,7 @@ def get_ellipsoid(x, y, z):
     np.copyto(roiaux, dst, where=mask)
 
     return out
+
 
 def get_fixed_geo(mask_scan, tumor_type, gmm_list=[], ellipsoid_model=None, model_name=None):
     gmm_model_tiny = None
