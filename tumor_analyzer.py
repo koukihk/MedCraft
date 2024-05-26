@@ -495,12 +495,8 @@ class TumorAnalyzer:
         def generate_random_str(length=6):
             return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-        test_size = 0.2
-        random_state = 42
-        # cov_type = 'full'
         tol = 0.00001
         max_iter = 500
-        patience = 3
 
         if not self.gmm_flag:
             os.makedirs(f'gmm/{cov_type}', exist_ok=True)

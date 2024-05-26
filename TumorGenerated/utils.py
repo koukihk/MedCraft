@@ -1,14 +1,21 @@
 ### Tumor Generateion
 import random
 import pywt
-# from noise import snoise3
-# from numba import njit, prange
-from opensimplex import OpenSimplex
 import cv2
 import elasticdeform
 import numpy as np
+from noise import snoise3
 from scipy.ndimage import gaussian_filter, median_filter
 from skimage.restoration import denoise_tv_chambolle
+
+
+def generate_simplex_noise(shape, scale):
+    noise = np.zeros(shape)
+    for x in range(shape[0]):
+        for y in range(shape[1]):
+            for z in range(shape[2]):
+                noise[x, y, z] = snoise3(x * scale, y * scale, z * scale)
+    return noise
 
 
 def wavelet_filter(data, wavelet='db1', level=1):
@@ -23,37 +30,6 @@ def wavelet_filter(data, wavelet='db1', level=1):
 
     filtered_data = pywt.waverecn(coeffs_filtered, wavelet, mode='periodization')
     return filtered_data
-
-
-def apply_median_filter(image, size):
-    return median_filter(image, size=size)
-
-
-def generate_simplex_noise(mask_shape, freq=0.05, octaves=4, persistence=0.5, seed=None):
-    x, y, z = np.mgrid[:mask_shape[0], :mask_shape[1], :mask_shape[2]]
-    x = x.astype(float) / (mask_shape[0] * freq)
-    y = y.astype(float) / (mask_shape[1] * freq)
-    z = z.astype(float) / (mask_shape[2] * freq)
-
-    if seed is None:
-        seed = np.random.randint(0, 2 ** 32 - 1)
-    simplex = OpenSimplex(seed=seed)
-
-    noise = np.zeros(mask_shape, dtype=float)
-    freq_mult = 1.0
-    amp_mult = 1.0
-
-    for _ in range(octaves):
-        noise += amp_mult * np.vectorize(simplex.noise3)(
-            x * freq_mult,
-            y * freq_mult,
-            z * freq_mult
-        )
-        freq_mult *= 2
-        amp_mult *= persistence
-
-    noise = (noise - noise.min()) / (noise.max() - noise.min())
-    return noise
 
 
 def add_salt_and_pepper_noise(image, salt_prob, pepper_prob, median_filter_size=3):
@@ -128,6 +104,7 @@ def get_texture(mask_shape):
 def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
     # uniform noise generate
     a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    # a = generate_simplex_noise(mask_shape, 0.5)
     a_2 = gaussian_filter(a, sigma=sigma_a)
     scale = np.random.uniform(0.19, 0.21)
     base = np.random.uniform(0.04, 0.06)
@@ -250,8 +227,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
         if any(coord < -10 for coord in potential_point):
             loop_count += 1
             continue
-        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume,
-                                                   start)
+        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume, start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
@@ -288,8 +264,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
         if any(coord < -10 for coord in potential_point):
             loop_count += 1
             continue
-        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume,
-                                                   start)
+        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume, start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
