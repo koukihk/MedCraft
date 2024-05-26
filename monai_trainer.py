@@ -15,6 +15,7 @@ import torch.nn.parallel
 import torch.utils.data.distributed
 from torch.cuda.amp import GradScaler, autocast  # native AMP
 from torch.utils.tensorboard import SummaryWriter
+from tumor_saver import TumorSaver
 
 sys.path.append('../../pipextra/lib/python3.6/site-packages')  # add missing packages
 
@@ -179,11 +180,22 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     run_loss = AverageMeter()
     run_acc = AverageMeter()
 
+    folder = 'default'
+    if args.gmm:
+        folder = 'gmm'
+    elif args.ellipsoid:
+        folder = 'ellipsoid'
+
     for idx, batch_data in enumerate(loader):
 
         if isinstance(batch_data, list):
+            if args.gen:
+                continue
             data, target = batch_data
         else:
+            if args.gen:
+                TumorSaver.save_data(batch_data, folder)
+                continue
             data, target = batch_data['image'], batch_data['label']
 
         data, target = data.cuda(args.rank), target.cuda(args.rank)

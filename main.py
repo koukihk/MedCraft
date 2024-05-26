@@ -35,7 +35,6 @@ parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')  # use synthetic tumors for training
 parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
-parser.add_argument('--gen_folder', default='normal')  # only for saving synthetic CT
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_cv', action='store_true')
