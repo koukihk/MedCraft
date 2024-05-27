@@ -714,6 +714,24 @@ class TumorAnalyzer:
         return np.round(new_volume).astype(int)
 
     @staticmethod
+    def resize_mask_new(volume, new_shape):
+        """
+        Resizes the volume to the given shape using linear interpolation, retaining all pixel values.
+        """
+        from scipy.ndimage import zoom
+
+        # Calculate the zoom factors for each dimension
+        zoom_factors = [new_dim / old_dim for new_dim, old_dim in zip(new_shape, volume.shape)]
+
+        # Perform interpolation
+        new_volume = zoom(volume, zoom_factors, order=1)  # order=1 corresponds to linear interpolation
+
+        # Round to nearest integer to retain original pixel values
+        new_volume = np.round(new_volume).astype(int)
+
+        return new_volume
+
+    @staticmethod
     def analyze_tumors(label_path, target_volume=(282, 244, 143), tumor_label=2):
         """
         Analyzes tumor information from label data.
@@ -725,6 +743,7 @@ class TumorAnalyzer:
 
         organ_mask = TumorAnalyzer.crop_mask(label_data)
         organ_mask = TumorAnalyzer.resize_mask(organ_mask, target_volume)
+        # organ_mask = TumorAnalyzer.resize_mask_new(organ_mask, target_volume)
 
         tumor_mask = np.zeros_like(organ_mask).astype(np.int16)
         tumor_mask[organ_mask == tumor_label] = 1
@@ -757,7 +776,7 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
-    def get_all_tumors(self, data_dir, save_folder, save=False, parallel=True):
+    def get_all_tumors(self, data_dir, parallel=True):
         tumors_path = os.path.join(data_dir, 'tumors.npy')
         if os.path.exists(tumors_path):
             tumor_data = np.load(tumors_path, allow_pickle=True)
@@ -770,13 +789,6 @@ class TumorAnalyzer:
         else:
             print("tumors.npy not found. Loading data.")
             self.load_data(data_dir, parallel=parallel)
-
-        if save:
-            if not os.path.exists(save_folder):
-                os.makedirs(save_folder)
-            save_path = os.path.join(save_folder, 'tumors.npy')
-            np.save(save_path, np.array(self.all_tumors, dtype=object))
-            print('Tumors data saved to {}'.format(save_path))
 
         return self.all_tumors
 
