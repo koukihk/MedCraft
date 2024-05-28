@@ -123,6 +123,8 @@ parser.add_argument('--randaugment_n', default=0, type=int)
 parser.add_argument('--warmup_epochs', default=100, type=int)
 parser.add_argument('--resume_ckpt', action='store_true')
 parser.add_argument('--pretrained_dir', default=None, type=str)
+
+parser.add_argument('--dataset_flag', default='d', type=str)
 parser.add_argument('--train_dir', default=None, type=str)
 parser.add_argument('--val_dir', default=None, type=str)
 parser.add_argument('--json_dir', default=None, type=str)
@@ -401,7 +403,10 @@ def main_worker(gpu, args):
         analyzer = TumorAnalyzer()
         tumor_data = analyzer.get_all_tumors(args.val_dir, True)
         tumor_data = np.array([tumor.position for tumor in tumor_data])
-        ellipsoid_model = EllipsoidFitter(tumor_data)
+        if args.dataset_flag == 's':
+            ellipsoid_model = EllipsoidFitter(tumor_data, scale_factors=[2.55, 2.41, 2.87], center_offset=(11.5, 0, 0))
+        else:
+            ellipsoid_model = EllipsoidFitter(tumor_data)
         model_name = 'ellipsoid'
         end_time = time.time()
         duration = end_time - start_time

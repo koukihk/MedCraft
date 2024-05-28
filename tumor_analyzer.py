@@ -28,6 +28,11 @@ class EllipsoidFitter:
         """
         Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
         """
+        self.scale_factors_s = [2.55, 2.41, 2.87]
+        self.center_offset_s = (11.5, 0, 0)
+        self.scale_factors_d = [2.33, 2.51, 2.87]
+        self.center_offset_d = (-11.5, -8.0, -1.0)
+
         self.data = data
         self.std_multiplier = std_multiplier
         self.scale_factors = scale_factors
