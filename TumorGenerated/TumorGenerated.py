@@ -6,8 +6,7 @@ from monai.config import KeysCollection
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
-from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_old, add_salt_and_pepper_noise,
-                    get_predefined_texture_wt)
+from .utils import SynthesisTumor, get_predefined_texture, get_predefined_texture_old, add_salt_and_pepper_noise
 
 
 class TumorGenerated(RandomizableTransform, MapTransform):
