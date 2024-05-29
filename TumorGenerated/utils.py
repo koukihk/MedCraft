@@ -5,7 +5,7 @@ import cv2
 import elasticdeform
 import numpy as np
 from noise import snoise3
-from scipy.ndimage import gaussian_filter, median_filter
+from scipy.ndimage import gaussian_filter, median_filter, sobel
 from skimage.restoration import denoise_tv_chambolle
 
 
@@ -20,12 +20,10 @@ def generate_simplex_noise(shape, scale):
 
 def wavelet_filter(data, wavelet='db1', level=1):
     coeffs = pywt.wavedecn(data, wavelet, mode='periodization', level=level)
-    coeffs_filtered = [coeffs[0]]  # Approximation coefficients remain unchanged
+    coeffs_filtered = [coeffs[0]]
 
-    # Apply thresholding to detail coefficients
     for detail_level in coeffs[1:]:
-        filtered_detail = {key: pywt.threshold(value, np.std(value), mode='soft') for key, value in
-                           detail_level.items()}
+        filtered_detail = {key: pywt.threshold(value, np.std(value), mode='soft') for key, value in detail_level.items()}
         coeffs_filtered.append(filtered_detail)
 
     filtered_data = pywt.waverecn(coeffs_filtered, wavelet, mode='periodization')
@@ -120,6 +118,28 @@ def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
     threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
     beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
     Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
+
+    return Bj
+
+
+def get_predefined_texture_wt(mask_shape, sigma_a, sigma_b):
+    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+
+    a_2 = wavelet_filter(a, wavelet='db1', level=int(sigma_a))
+
+    scale = np.random.uniform(0.19, 0.21)
+    base = np.random.uniform(0.04, 0.06)
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+
+    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    b = (a > random_sample).astype(float)
+
+    b = wavelet_filter(b, wavelet='db1', level=int(sigma_b))
+
+    u_0 = np.random.uniform(0.5, 0.55)
+    threshold_mask = b > 0.12
+    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
+    Bj = np.clip(beta * b, 0, 1)
 
     return Bj
 
@@ -277,10 +297,10 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     return potential_point
 
 
-def is_edge_point(mask_scan, potential_points, neighborhood_size=(3, 3, 3), threshold=5):
+def is_edge_point(mask_scan, potential_point, neighborhood_size=(3, 3, 3), threshold=5):
     # Define the boundaries of the neighborhood around the potential point
-    min_bounds = np.maximum(potential_points - np.array(neighborhood_size) // 2, 0)
-    max_bounds = np.minimum(potential_points + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
+    min_bounds = np.maximum(potential_point - np.array(neighborhood_size) // 2, 0)
+    max_bounds = np.minimum(potential_point + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
 
     # Extract the neighborhood volume from the mask scan
     neighborhood_volume = mask_scan[min_bounds[0]:max_bounds[0] + 1,
@@ -295,6 +315,21 @@ def is_edge_point(mask_scan, potential_points, neighborhood_size=(3, 3, 3), thre
         return True  # Potential point is considered to be on the edge
     else:
         return False  # Potential point is considered to be inside the liver
+
+
+def is_edge_point_sobel(mask_scan, potential_point, threshold=5):
+    # Apply Sobel filter to detect edges
+    sobel_x = sobel(mask_scan, axis=0)
+    sobel_y = sobel(mask_scan, axis=1)
+    sobel_z = sobel(mask_scan, axis=2)
+
+    # Calculate the magnitude of the gradient
+    gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2 + sobel_z ** 2)
+
+    # Determine if the potential point is near an edge
+    gradient_value = gradient_magnitude[tuple(potential_point)]
+
+    return gradient_value > threshold
 
 
 # Step 2 : generate the ellipsoid
