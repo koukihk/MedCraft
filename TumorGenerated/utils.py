@@ -113,8 +113,8 @@ def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
 # here we want to get predefined texutre:
 def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     # Step 1: Uniform noise generate
-    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    # a = generate_simplex_noise(mask_shape, 0.5)
+    # a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    a = generate_simplex_noise(mask_shape, 0.5)
 
     # Step 2: Nonlinear diffusion filtering
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)

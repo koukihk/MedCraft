@@ -41,7 +41,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         pepper_prob = 0.01  # Adjust these probabilities as needed
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture_old(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture(predefined_texture_shape, sigma_a, sigma_b)
                 # texture = add_salt_and_pepper_noise(texture, salt_prob, pepper_prob, 3)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
