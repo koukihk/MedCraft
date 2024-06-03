@@ -609,26 +609,19 @@ def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, ou
 
 
 def get_tumor(volume_scan, mask_scan, tumor_type, texture, density_organ_map, threshold,
-              outrange_standard_val, organ_hu_lowerbound, organ_standard_val,
+              outrange_standard_val, organ_hu_lowerbound,
               gmm_list=[], ellipsoid_model=None, model_name=None):
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
     volume_scan_type = volume_scan.dtype
     volume_scan = volume_scan.astype(np.float32)
-    tumor_1 = geo_mask.astype(np.float32).copy()
-    tumor_1[tumor_1 == -1] = threshold
     density_organ_map = density_organ_map.astype(np.float32)
-
-    kernel = (3, 3)
-
-    for z in range(tumor_1.shape[0]):
-        tumor_1[z] = cv2.GaussianBlur(tumor_1[z], kernel, 0)
 
     interval = (outrange_standard_val - organ_hu_lowerbound) / 3
     # deal with the conflict vessel
-    vessel_condition = (density_organ_map == outrange_standard_val) & (tumor_1 >= threshold / 2)
+    vessel_condition = (density_organ_map == outrange_standard_val)
     # deal with the high intensity tissue
-    high_tissue_condition = (density_organ_map == (organ_hu_lowerbound + 2 * interval)) & (tumor_1 != 0)
+    high_tissue_condition = (density_organ_map == (organ_hu_lowerbound + 2 * interval))
 
     volume_scan[vessel_condition] *= (organ_hu_lowerbound + interval / 2) / outrange_standard_val
     volume_scan[high_tissue_condition] *= (organ_hu_lowerbound + 2 * interval) / outrange_standard_val
@@ -679,15 +672,14 @@ def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, steps, kernel_si
     select_organ_region = np.isin(liver_mask, [1, 2])
     processed_organ_region = liver_volume.copy()
     processed_organ_region[~select_organ_region] = outrange_standard_val
-    processed_organ_region[processed_organ_region >
-                        outrange_standard_val] = outrange_standard_val
+    processed_organ_region[processed_organ_region > outrange_standard_val] = outrange_standard_val
 
     # Quantify the density of the organ
     processed_organ_region, density_organ_map = Quantify(processed_organ_region, organ_hu_lowerbound,
                                                          organ_standard_val, outrange_standard_val)
 
     liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture, density_organ_map,
-                                         threshold, outrange_standard_val, organ_hu_lowerbound, organ_standard_val,
+                                         threshold, outrange_standard_val, organ_hu_lowerbound,
                                          gmm_list, ellipsoid_model, model_name)
     volume_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_volume
     mask_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_mask
