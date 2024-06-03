@@ -272,8 +272,8 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
                 ),
                 transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"],
                                        spatial_size=[96, 96, 96]),
-                #             transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
-                #             transforms.RandSpatialCropd(keys=["image", "label"], roi_size=roi_size, random_size=False),
+                # transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
+                # transforms.RandSpatialCropd(keys=["image", "label"], roi_size=roi_size, random_size=False),
                 transforms.RandCropByPosNegLabeld(
                     keys=["image", "label"],
                     label_key="label",
@@ -403,10 +403,7 @@ def main_worker(gpu, args):
         analyzer = TumorAnalyzer()
         tumor_data = analyzer.get_all_tumors(args.val_dir, True)
         tumor_data = np.array([tumor.position for tumor in tumor_data])
-        if args.dataset_flag == 's':
-            ellipsoid_model = EllipsoidFitter(tumor_data, scale_factors=[2.55, 2.41, 2.87], center_offset=(11.5, 0, 0))
-        else:
-            ellipsoid_model = EllipsoidFitter(tumor_data)
+        ellipsoid_model = EllipsoidFitter(tumor_data, 2.46, [2.45, 2.86, 2.84], (-15.05, -7.59, 1.3))
         model_name = 'ellipsoid'
         end_time = time.time()
         duration = end_time - start_time

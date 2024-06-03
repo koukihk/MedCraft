@@ -15,6 +15,7 @@ import plotly.io as pio
 import plotly.offline as pyo
 from scipy import interpolate
 from scipy import ndimage
+from scipy.optimize import differential_evolution
 from scipy.spatial.distance import cdist
 from scipy.spatial.distance import mahalanobis
 from sklearn.decomposition import PCA
@@ -24,74 +25,41 @@ from tqdm import tqdm
 
 
 class EllipsoidFitter:
-    def __init__(self, data, std_multiplier=2.55, scale_factors=[2.33, 2.51, 2.87], center_offset=(-11.5, -8.0, -1.0)):
-        """
-        Initialize the EllipsoidFitter with the given data and fit an ellipsoid.
-        """
-        self.scale_factors_s = [2.55, 2.41, 2.87]
-        self.center_offset_s = (11.5, 0, 0)
-        self.scale_factors_d = [2.33, 2.51, 2.87]
-        self.center_offset_d = (-11.5, -8.0, -1.0)
-
+    def __init__(self, data, std_multiplier=2.46, scale_factors=[2.45, 2.86, 2.84], center_offset=(-15.05, -7.59, 1.3)):
         self.data = data
         self.std_multiplier = std_multiplier
         self.scale_factors = scale_factors
         self.center_offset = np.array(center_offset)
         self.filtered_data = self._remove_outliers(data)
         self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
-        # self._adjust_center()
 
     def _remove_outliers(self, data):
-        """
-        Remove outliers to keep at least 98% of the data.
-        """
         mean = np.mean(data, axis=0)
         cov_matrix = np.cov(data, rowvar=False)
         inv_cov_matrix = np.linalg.inv(cov_matrix)
         mahalanobis_distances = [mahalanobis(sample, mean, inv_cov_matrix) for sample in data]
-        threshold = np.percentile(mahalanobis_distances, 98)
+        threshold = np.percentile(mahalanobis_distances, 95)  # Using a stricter threshold
         filtered_data = data[np.array(mahalanobis_distances) <= threshold]
         return filtered_data
 
     def _fit_ellipsoid(self, data):
-        """
-        Fit an ellipsoid to the given data using PCA.
-        """
         pca = PCA(n_components=3)
         pca.fit(data)
         center = np.mean(data, axis=0) + self.center_offset
-
         axes = pca.components_
         variances = pca.explained_variance_
-
         radii = np.sqrt(variances) * self.scale_factors
-
         return center, axes, radii
 
-    def _adjust_center(self):
-        """
-        Adjust the ellipsoid center to ensure it doesn't cross the zero boundary.
-        """
-        for i in range(3):
-            min_boundary = self.center[i] - self.radii[i]
-            if min_boundary < 0:
-                self.center[i] -= min_boundary  # Shift the center to the right
-
     def get_random_point(self):
-        """
-        Generate a random point inside the fitted ellipsoid.
-        """
         phi = np.random.uniform(0, 2 * np.pi)
         costheta = np.random.uniform(-1, 1)
         u = np.random.uniform(0, 1)
-
         theta = np.arccos(costheta)
         r = u ** (1 / 3)
-
         x = r * np.sin(theta) * np.cos(phi)
         y = r * np.sin(theta) * np.sin(phi)
         z = r * np.cos(theta)
-
         random_point = np.dot([x, y, z], self.axes.T * self.radii) + self.center
         return random_point
 
@@ -145,10 +113,14 @@ class EllipsoidFitter:
         )
 
         # Create scatter plot for outliers
+        x = [point[0] for point in outliers]
+        y = [point[1] for point in outliers]
+        z = [point[2] for point in outliers]
+
         outlier_scatter = go.Scatter3d(
-            x=outliers[:, 0],
-            y=outliers[:, 1],
-            z=outliers[:, 2],
+            x=x,
+            y=y,
+            z=z,
             mode='markers',
             marker=dict(size=2, color='red'),
             name='Outliers'
@@ -207,6 +179,47 @@ class EllipsoidFitter:
                 term += " = 1"
             equation += term + "\n"
         return equation
+
+
+class EllipsoidOptimizer:
+    def __init__(self, data):
+        self.data = data
+        self.coverage_weight = 0.3
+
+    def objective_function(self, params):
+        std_multiplier, scale_factors, center_offset = params[0], params[1:4], params[4:]
+        fitter = EllipsoidFitter(self.data, std_multiplier, scale_factors, center_offset)
+        within_ellipsoid = self._count_within_ellipsoid(fitter)
+        coverage = within_ellipsoid / len(self.data)
+        compactness = self._calculate_compactness(fitter)
+        return -(self.coverage_weight * coverage + (1 - self.coverage_weight) * compactness)
+
+    def _count_within_ellipsoid(self, fitter):
+        count = 0
+        for point in self.data:
+            transformed_point = (point - fitter.center) @ np.linalg.inv(fitter.axes.T * fitter.radii)
+            if np.sum(transformed_point**2) <= 1:
+                count += 1
+        return count
+
+    def _calculate_compactness(self, fitter):
+        distances = []
+        for point in self.data:
+            transformed_point = (point - fitter.center) @ np.linalg.inv(fitter.axes.T * fitter.radii)
+            distance = np.linalg.norm(transformed_point)
+            distances.append(abs(distance - 1))
+        return np.mean(distances)
+
+    def optimize(self):
+        bounds = [(1.0, 3.0), (2.0, 3.0), (2.0, 3.0), (2.0, 3.0), (-20.0, 20.0), (-20.0, 20.0), (-20.0, 20.0)]
+
+        self.coverage_weight = 0.0
+        result = differential_evolution(self.objective_function, bounds)
+        compactness_params = result.x
+
+        self.coverage_weight = 0.3
+        result = differential_evolution(self.objective_function, bounds, x0=compactness_params)
+        return result.x
 
 
 class GMMPlotter:
