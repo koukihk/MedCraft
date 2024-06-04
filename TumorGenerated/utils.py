@@ -1,10 +1,10 @@
 ### Tumor Generateion
 import random
-import pywt
+
 import cv2
 import elasticdeform
 import numpy as np
-import torch
+import pywt
 from noise import snoise3
 from scipy.ndimage import gaussian_filter, median_filter, sobel
 from skimage.restoration import denoise_tv_chambolle
@@ -596,8 +596,7 @@ def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, ou
 
     density_organ_map = processed_organ_region.copy()
 
-    processed_organ_region[processed_organ_region <
-                           outrange_standard_val] = organ_standard_val
+    processed_organ_region[processed_organ_region < outrange_standard_val] = organ_standard_val
     processed_organ_region[processed_organ_region == outrange_standard_val] = 1
 
     processed_organ_region[processed_organ_region == 1] = outrange_standard_val
@@ -608,9 +607,8 @@ def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, ou
     return processed_organ_region, density_organ_map
 
 
-def get_tumor(volume_scan, mask_scan, tumor_type, texture, density_organ_map, threshold,
-              outrange_standard_val, organ_hu_lowerbound,
-              gmm_list=[], ellipsoid_model=None, model_name=None):
+def get_tumor(volume_scan, mask_scan, tumor_type, texture, density_organ_map, outrange_standard_val,
+              organ_hu_lowerbound, gmm_list=[], ellipsoid_model=None, model_name=None):
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
     volume_scan_type = volume_scan.dtype
@@ -679,7 +677,7 @@ def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, steps, kernel_si
                                                          organ_standard_val, outrange_standard_val)
 
     liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture, density_organ_map,
-                                         threshold, outrange_standard_val, organ_hu_lowerbound,
+                                         outrange_standard_val, organ_hu_lowerbound,
                                          gmm_list, ellipsoid_model, model_name)
     volume_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_volume
     mask_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_mask
