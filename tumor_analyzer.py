@@ -15,19 +15,64 @@ import plotly.io as pio
 import plotly.offline as pyo
 from scipy import interpolate
 from scipy import ndimage
-from scipy.optimize import differential_evolution
 from scipy.spatial.distance import cdist
 from scipy.spatial.distance import mahalanobis
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import KFold
 from tqdm import tqdm
+from deap import base, creator, tools, algorithms
+
+
+class EllipsoidOptimizer:
+    def __init__(self, data, n_gen=100, pop_size=200):
+        self.data = data
+        self.n_gen = n_gen
+        self.pop_size = pop_size
+
+        creator.create("FitnessMax", base.Fitness, weights=(1.0, 1.0))
+        creator.create("Individual", list, fitness=creator.FitnessMax)
+
+        self.toolbox = base.Toolbox()
+        self.toolbox.register("attr_float", np.random.uniform, 0.5, 5.0)
+        self.toolbox.register("attr_offset", np.random.uniform, -20.0, 20.0)
+        self.toolbox.register("individual", tools.initCycle, creator.Individual,
+                              (self.toolbox.attr_float, self.toolbox.attr_float, self.toolbox.attr_float,
+                               self.toolbox.attr_offset, self.toolbox.attr_offset, self.toolbox.attr_offset), n=1)
+        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
+        self.toolbox.register("mate", tools.cxBlend, alpha=0.5)
+        self.toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.2)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("evaluate", self.eval_ellipsoid)
+
+    def eval_ellipsoid(self, individual):
+        fitter = EllipsoidFitter(self.data)
+        scale_factors = individual[:3]
+        center_offset = individual[3:]
+        coverage, compactness = fitter.evaluate(scale_factors, center_offset)
+        return coverage, compactness
+
+    def optimize(self):
+        population = self.toolbox.population(n=self.pop_size)
+        hof = tools.HallOfFame(1, similar=np.array_equal)
+        stats = tools.Statistics(lambda ind: ind.fitness.values)
+        stats.register("avg", np.mean)
+        stats.register("std", np.std)
+        stats.register("min", np.min)
+        stats.register("max", np.max)
+
+        algorithms.eaSimple(population, self.toolbox, cxpb=0.5, mutpb=0.2, ngen=self.n_gen,
+                            stats=stats, halloffame=hof, verbose=True)
+
+        best_individual = hof[0]
+        return best_individual
 
 
 class EllipsoidFitter:
-    def __init__(self, data, std_multiplier=2.46, scale_factors=[2.45, 2.86, 2.84], center_offset=(-15.05, -7.59, 1.3)):
+    def __init__(self, data,
+                 scale_factors=[2.7, 3.3, 3.2],
+                 center_offset=[-18.6, -6.3, -6.7]):
         self.data = data
-        self.std_multiplier = std_multiplier
         self.scale_factors = scale_factors
         self.center_offset = np.array(center_offset)
         self.filtered_data = self._remove_outliers(data)
@@ -38,7 +83,7 @@ class EllipsoidFitter:
         cov_matrix = np.cov(data, rowvar=False)
         inv_cov_matrix = np.linalg.inv(cov_matrix)
         mahalanobis_distances = [mahalanobis(sample, mean, inv_cov_matrix) for sample in data]
-        threshold = np.percentile(mahalanobis_distances, 95)  # Using a stricter threshold
+        threshold = np.percentile(mahalanobis_distances, 98)
         filtered_data = data[np.array(mahalanobis_distances) <= threshold]
         return filtered_data
 
@@ -84,6 +129,19 @@ class EllipsoidFitter:
 
         ax.plot_wireframe(x, y, z, color='r', alpha=0.1)
         plt.show()
+
+    def evaluate(self, scale_factors, center_offset):
+        self.scale_factors = scale_factors
+        self.center_offset = center_offset
+        self.filtered_data = self._remove_outliers(self.data)
+        self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
+
+        distances = np.linalg.norm((self.filtered_data - self.center) @ np.linalg.inv(np.diag(self.radii)), axis=1)
+        coverage = np.mean(distances <= 1)
+        volume = (4 / 3) * np.pi * np.prod(self.radii)
+        compactness = 1 / volume
+
+        return coverage, compactness
 
     def plot_interactive_ellipsoid(self, folder='ellipsoid_plot'):
         """
@@ -179,47 +237,6 @@ class EllipsoidFitter:
                 term += " = 1"
             equation += term + "\n"
         return equation
-
-
-class EllipsoidOptimizer:
-    def __init__(self, data):
-        self.data = data
-        self.coverage_weight = 0.3
-
-    def objective_function(self, params):
-        std_multiplier, scale_factors, center_offset = params[0], params[1:4], params[4:]
-        fitter = EllipsoidFitter(self.data, std_multiplier, scale_factors, center_offset)
-        within_ellipsoid = self._count_within_ellipsoid(fitter)
-        coverage = within_ellipsoid / len(self.data)
-        compactness = self._calculate_compactness(fitter)
-        return -(self.coverage_weight * coverage + (1 - self.coverage_weight) * compactness)
-
-    def _count_within_ellipsoid(self, fitter):
-        count = 0
-        for point in self.data:
-            transformed_point = (point - fitter.center) @ np.linalg.inv(fitter.axes.T * fitter.radii)
-            if np.sum(transformed_point**2) <= 1:
-                count += 1
-        return count
-
-    def _calculate_compactness(self, fitter):
-        distances = []
-        for point in self.data:
-            transformed_point = (point - fitter.center) @ np.linalg.inv(fitter.axes.T * fitter.radii)
-            distance = np.linalg.norm(transformed_point)
-            distances.append(abs(distance - 1))
-        return np.mean(distances)
-
-    def optimize(self):
-        bounds = [(1.0, 3.0), (2.0, 3.0), (2.0, 3.0), (2.0, 3.0), (-20.0, 20.0), (-20.0, 20.0), (-20.0, 20.0)]
-
-        self.coverage_weight = 0.0
-        result = differential_evolution(self.objective_function, bounds)
-        compactness_params = result.x
-
-        self.coverage_weight = 0.3
-        result = differential_evolution(self.objective_function, bounds, x0=compactness_params)
-        return result.x
 
 
 class GMMPlotter:
@@ -794,7 +811,7 @@ class TumorAnalyzer:
 
         return models.get(model_type)
 
-    def get_all_tumors(self, data_dir, parallel=True):
+    def get_all_tumors(self, data_dir, save_folder, save=False, parallel=True):
         tumors_path = os.path.join(data_dir, 'tumors.npy')
         if os.path.exists(tumors_path):
             tumor_data = np.load(tumors_path, allow_pickle=True)
@@ -807,6 +824,13 @@ class TumorAnalyzer:
         else:
             print("tumors.npy not found. Loading data.")
             self.load_data(data_dir, parallel=parallel)
+
+        if not os.path.exists(tumors_path) and save:
+            if not os.path.exists(save_folder):
+                os.makedirs(save_folder)
+            save_path = os.path.join(save_folder, 'tumors.npy')
+            np.save(save_path, np.array(self.all_tumors, dtype=object))
+            print('Tumors data saved to {}'.format(save_path))
 
         return self.all_tumors
 
