@@ -174,14 +174,26 @@ def random_select(mask_scan):
     return potential_points
 
 
-def get_absolute_coordinates(relative_coordinates, original_shape, target_volume, start):
+def get_absolute_coordinate_in_liver(relative_coordinate, original_shape, target_volume):
     x_ratio = original_shape[0] / target_volume[0]
     y_ratio = original_shape[1] / target_volume[1]
     z_ratio = original_shape[2] / target_volume[2]
 
-    absolute_x = relative_coordinates[0] * x_ratio
-    absolute_y = relative_coordinates[1] * y_ratio
-    absolute_z = relative_coordinates[2] * z_ratio
+    absolute_x = relative_coordinate[0] * x_ratio
+    absolute_y = relative_coordinate[1] * y_ratio
+    absolute_z = relative_coordinate[2] * z_ratio
+
+    return np.array([absolute_x, absolute_y, absolute_z], dtype=float)
+
+
+def get_absolute_coordinate(relative_coordinate, original_shape, target_volume, start):
+    x_ratio = original_shape[0] / target_volume[0]
+    y_ratio = original_shape[1] / target_volume[1]
+    z_ratio = original_shape[2] / target_volume[2]
+
+    absolute_x = relative_coordinate[0] * x_ratio
+    absolute_y = relative_coordinate[1] * y_ratio
+    absolute_z = relative_coordinate[2] * z_ratio
 
     absolute_x += start[0]
     absolute_y += start[1]
@@ -214,11 +226,13 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
         if any(coord < 0 for coord in potential_point):
             loop_count += 1
             continue
-        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume, start)
+        potential_point = get_absolute_coordinate(potential_point, liver_mask.shape, target_volume, start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
+        # potential_point_in_liver = get_absolute_coordinate_in_liver(potential_point, liver_mask.shape, target_volume)
+        # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point_sobel(liver_mask, potential_point):
+            if not is_edge_point_sobel(mask_scan, potential_point):
                 return potential_point
 
         loop_count += 1
@@ -251,11 +265,13 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
         if any(coord < 0 for coord in potential_point):
             loop_count += 1
             continue
-        potential_point = get_absolute_coordinates(potential_point, liver_mask.shape, target_volume, start)
+        potential_point = get_absolute_coordinate(potential_point, liver_mask.shape, target_volume, start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
+        # potential_point_in_liver = get_absolute_coordinate_in_liver(potential_point, liver_mask.shape, target_volume)
+        # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point_sobel(liver_mask, potential_point):
+            if not is_edge_point_sobel(mask_scan, potential_point):
                 return potential_point
 
         loop_count += 1
