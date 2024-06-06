@@ -218,7 +218,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_point):
+            if not is_edge_point_sobel(liver_mask, potential_point):
                 return potential_point
 
         loop_count += 1
@@ -255,7 +255,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_point):
+            if not is_edge_point_sobel(liver_mask, potential_point):
                 return potential_point
 
         loop_count += 1
@@ -608,23 +608,25 @@ def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, ou
 
 
 def get_tumor(volume_scan, mask_scan, tumor_type, texture, density_organ_map, outrange_standard_val,
-              organ_hu_lowerbound, gmm_list=[], ellipsoid_model=None, model_name=None):
+              organ_hu_lowerbound, hu_processor,
+              gmm_list=[], ellipsoid_model=None, model_name=None):
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
-    volume_scan_type = volume_scan.dtype
-    volume_scan = volume_scan.astype(np.float32)
-    density_organ_map = density_organ_map.astype(np.float32)
+    if hu_processor:
+        volume_scan_type = volume_scan.dtype
+        volume_scan = volume_scan.astype(np.float32)
+        density_organ_map = density_organ_map.astype(np.float32)
 
-    interval = (outrange_standard_val - organ_hu_lowerbound) / 3
-    # deal with the conflict vessel
-    vessel_condition = (density_organ_map == outrange_standard_val)
-    # deal with the high intensity tissue
-    high_tissue_condition = (density_organ_map == (organ_hu_lowerbound + 2 * interval))
+        interval = (outrange_standard_val - organ_hu_lowerbound) / 3
+        # deal with the conflict vessel
+        vessel_condition = (density_organ_map == outrange_standard_val)
+        # deal with the high intensity tissue
+        high_tissue_condition = (density_organ_map == (organ_hu_lowerbound + 2 * interval))
 
-    volume_scan[vessel_condition] *= (organ_hu_lowerbound + interval / 2) / outrange_standard_val
-    volume_scan[high_tissue_condition] *= (organ_hu_lowerbound + 2 * interval) / outrange_standard_val
+        volume_scan[vessel_condition] *= (organ_hu_lowerbound + interval / 2) / outrange_standard_val
+        volume_scan[high_tissue_condition] *= (organ_hu_lowerbound + 2 * interval) / outrange_standard_val
 
-    volume_scan = volume_scan.astype(volume_scan_type)
+        volume_scan = volume_scan.astype(volume_scan_type)
 
     sigma = np.random.uniform(1, 2)
     difference = np.random.uniform(65, 145)
@@ -641,8 +643,8 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, density_organ_map, ou
 
 
 def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, steps, kernel_size, organ_standard_val,
-                   organ_hu_lowerbound, outrange_standard_val, threshold, gmm_list=[], ellipsoid_model=None,
-                   model_name=None):
+                   organ_hu_lowerbound, outrange_standard_val, threshold, hu_processor,
+                   gmm_list=[], ellipsoid_model=None, model_name=None):
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
@@ -677,7 +679,7 @@ def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, steps, kernel_si
                                                          organ_standard_val, outrange_standard_val)
 
     liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture, density_organ_map,
-                                         outrange_standard_val, organ_hu_lowerbound,
+                                         outrange_standard_val, organ_hu_lowerbound, hu_processor,
                                          gmm_list, ellipsoid_model, model_name)
     volume_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_volume
     mask_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_mask

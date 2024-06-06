@@ -34,6 +34,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
         self.organ_standard_val = 0  # organ standard value
         self.threshold = 10  # threshold
+        self.hu_processor = False
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
@@ -66,7 +67,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
                                                           self.steps, self.kernel_size, self.organ_standard_val,
                                                           self.organ_hu_lowerbound, self.outrange_standard_val,
-                                                          self.threshold, self.gmm_list, self.ellipsoid_model,
-                                                          self.model_name)
+                                                          self.threshold, self.hu_processor,
+                                                          self.gmm_list, self.ellipsoid_model, self.model_name)
 
         return d
