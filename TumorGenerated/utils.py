@@ -114,8 +114,8 @@ def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
 # here we want to get predefined texutre:
 def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     # Step 1: Uniform noise generate
-    # a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    a = generate_simplex_noise(mask_shape, 0.5)
+    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    # a = generate_simplex_noise(mask_shape, 0.5)
 
     # Step 2: Nonlinear diffusion filtering
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
@@ -232,7 +232,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
         # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point_sobel(mask_scan, potential_point):
+            if not is_edge_point(mask_scan, potential_point):
                 return potential_point
 
         loop_count += 1
@@ -271,7 +271,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
         # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point_sobel(mask_scan, potential_point):
+            if not is_edge_point(mask_scan, potential_point):
                 return potential_point
 
         loop_count += 1

@@ -17,6 +17,7 @@ from scipy import interpolate
 from scipy import ndimage
 from scipy.spatial.distance import cdist
 from scipy.spatial.distance import mahalanobis
+from scipy.optimize import minimize
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import KFold
@@ -25,12 +26,14 @@ from deap import base, creator, tools, algorithms
 
 
 class EllipsoidOptimizer:
-    def __init__(self, data, n_gen=100, pop_size=200):
+    def __init__(self, data, n_gen=200, pop_size=300, coverage_weight=0.35, compactness_weight=0.65):
         self.data = data
         self.n_gen = n_gen
         self.pop_size = pop_size
+        self.coverage_weight = coverage_weight
+        self.compactness_weight = compactness_weight
 
-        creator.create("FitnessMax", base.Fitness, weights=(1.0, 1.0))
+        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
         creator.create("Individual", list, fitness=creator.FitnessMax)
 
         self.toolbox = base.Toolbox()
@@ -47,10 +50,11 @@ class EllipsoidOptimizer:
 
     def eval_ellipsoid(self, individual):
         fitter = EllipsoidFitter(self.data)
-        scale_factors = individual[:3]
-        center_offset = individual[3:]
+        scale_factors = np.round(individual[:3]).astype(int)
+        center_offset = np.round(individual[3:]).astype(int)
         coverage, compactness = fitter.evaluate(scale_factors, center_offset)
-        return coverage, compactness
+        fitness = (self.coverage_weight * coverage) + (self.compactness_weight * compactness)
+        return fitness,
 
     def optimize(self):
         population = self.toolbox.population(n=self.pop_size)
@@ -65,6 +69,21 @@ class EllipsoidOptimizer:
                             stats=stats, halloffame=hof, verbose=True)
 
         best_individual = hof[0]
+        best_individual = self.local_search(best_individual)
+        return best_individual
+
+    def local_search(self, individual):
+        def objective(x):
+            fitter = EllipsoidFitter(self.data)
+            scale_factors = np.round(x[:3]).astype(int)
+            center_offset = np.round(x[3:]).astype(int)
+            coverage, compactness = fitter.evaluate(scale_factors, center_offset)
+            fitness = (self.coverage_weight * coverage) + (self.compactness_weight * compactness)
+            return -fitness  # Minimize negative fitness
+
+        bounds = [(0.5, 5.0)] * 3 + [(-20.0, 20.0)] * 3
+        result = minimize(objective, individual, bounds=bounds, method='L-BFGS-B')
+        best_individual = np.round(result.x)
         return best_individual
 
 
@@ -90,11 +109,31 @@ class EllipsoidFitter:
     def _fit_ellipsoid(self, data):
         pca = PCA(n_components=3)
         pca.fit(data)
-        center = np.mean(data, axis=0) + self.center_offset
-        axes = pca.components_
+        center = np.round(np.mean(data, axis=0) + self.center_offset).astype(int)
+        axes = np.round(pca.components_, 1)
         variances = pca.explained_variance_
-        radii = np.sqrt(variances) * self.scale_factors
+        radii = np.round(np.sqrt(variances) * self.scale_factors).astype(int)
+        # Ensure no radii are zero by adding a small epsilon value
+        radii = np.where(radii == 0, 1, radii)
         return center, axes, radii
+
+    def evaluate(self, scale_factors, center_offset):
+        self.scale_factors = scale_factors
+        self.center_offset = center_offset
+        self.filtered_data = self._remove_outliers(self.data)
+        self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
+
+        distances = np.linalg.norm((self.filtered_data - self.center) @ np.linalg.inv(np.diag(self.radii)), axis=1)
+        coverage = np.mean(distances <= 1)
+        volume = (4 / 3) * np.pi * np.prod(self.radii)
+        compactness = 1 / volume  # Smaller volume indicates better compactness
+
+        return coverage, compactness
+
+    def set_precomputed_parameters(self, center, axes, radii):
+        self.center = np.array(center)
+        self.axes = np.array(axes)
+        self.radii = np.array(radii)
 
     def get_random_point(self):
         phi = np.random.uniform(0, 2 * np.pi)
@@ -129,19 +168,6 @@ class EllipsoidFitter:
 
         ax.plot_wireframe(x, y, z, color='r', alpha=0.1)
         plt.show()
-
-    def evaluate(self, scale_factors, center_offset):
-        self.scale_factors = scale_factors
-        self.center_offset = center_offset
-        self.filtered_data = self._remove_outliers(self.data)
-        self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
-
-        distances = np.linalg.norm((self.filtered_data - self.center) @ np.linalg.inv(np.diag(self.radii)), axis=1)
-        coverage = np.mean(distances <= 1)
-        volume = (4 / 3) * np.pi * np.prod(self.radii)
-        compactness = 1 / volume
-
-        return coverage, compactness
 
     def plot_interactive_ellipsoid(self, folder='ellipsoid_plot'):
         """

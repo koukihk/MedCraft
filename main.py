@@ -403,7 +403,12 @@ def main_worker(gpu, args):
         analyzer = TumorAnalyzer()
         tumor_data = analyzer.get_all_tumors(args.val_dir, args.val_dir, False, True)
         tumor_data = np.array([tumor.position for tumor in tumor_data])
-        ellipsoid_model = EllipsoidFitter(tumor_data, [3.1, 3.2, 3.0], [-7.9, -7.8, -5.1])
+        ellipsoid_model = EllipsoidFitter(tumor_data, [2.3, 2.5, 2.9], [-11.5, -8, -1])
+        # Setting precomputed parameters
+        best_center = [166, 143, 80]
+        best_axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
+        best_radii = [213, 167, 82]
+        ellipsoid_model.set_precomputed_parameters(best_center, best_axes, best_radii)
         model_name = 'ellipsoid'
         end_time = time.time()
         duration = end_time - start_time
