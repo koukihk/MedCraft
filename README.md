@@ -2,6 +2,34 @@ This repository provides extensive examples of synthetic liver tumors generated 
 
 **Amazing**, right?
 
+```
+root
+│  main.py
+│  monai_trainer.py // Training script using MONAI framework
+│  transfer_label.py
+│  tumor_analyzer.py // Analyzes tumor data
+│  tumor_saver.py  // Saves tumor data
+│  validation.py // Validation script
+│
+├─datafolds
+│
+├─external
+│  └─surface-distance // External library for surface distance calculations
+│
+├─networks // Contains various neural network architectures
+│
+├─networks2 // Alternative implementations of network architectures
+│
+├─optimizers
+│      lr_scheduler.py // Learning rate scheduler
+│      __init__.py
+│
+└─TumorGenerated
+        TumorGenerated.py
+        utils.py // Utility functions for tumor generation
+        __init__.py
+```
+
 ## Model
 
 | Organ    | Tumor | Model             | Pre-trained? | Download                                                     |
@@ -29,7 +57,7 @@ Data: Liver ([link](https://www.dropbox.com/scl/fi/ulok1xpk5e6nzicfipqxd/04_LiTS
 
 #### Dataset
 
-please download these datasets and save to `<data-path>` (user-defined).
+Please download these datasets and save to `<data-path>` (user-defined).
 
 - 01 [Multi-Atlas Labeling Beyond the Cranial Vault - Workshop and Challenge (BTCV)](https://www.synapse.org/#!Synapse:syn3193805/wiki/89480)
 - 02 [Pancreas-CT TCIA](https://wiki.cancerimagingarchive.net/display/Public/Pancreas-CT)
@@ -138,9 +166,9 @@ python -W ignore validation.py --model=unet --val_overlap=0.75 --val_dir $val_pa
 
 ## Related Papers
 
-**Generative Enhancement for 3D Medical Images**  *Zhu, Lingting and Codella, Noel and Chen, Dongdong and Jin, Zhenchao and Yuan, Lu and Yu, Lequan* arXiv preprint arXiv:2403.12852 | 19 Mar 2024 [paper](https://arxiv.org/abs/2403.12852)
+**From Pixel to Cancer: Cellular Automata in Computed Tomography** *Yuxiang Lai, Xiaoxi Chen, Angtian Wang, Alan Yuille, Zongwei Zhou* MICCAI | 13 May 2024 [paper](https://www.cs.jhu.edu/~alanlab/Pubs24/lai2024pixel.pdf)
 
-**From Pixel to Cancer: Cellular Automata in Computed Tomography** *Yuxiang Lai, Xiaoxi Chen, Angtian Wang, Alan Yuille, and Zongwei Zhou* preprint  arXiv:2403.06459 | 11 Mar 2024 [paper](https://arxiv.org/abs/2403.06459)
+**Generative Enhancement for 3D Medical Images**  *Zhu, Lingting and Codella, Noel and Chen, Dongdong and Jin, Zhenchao and Yuan, Lu and Yu, Lequan* arXiv preprint arXiv:2403.12852 | 19 Mar 2024 [paper](https://arxiv.org/abs/2403.12852)
 
 **Towards Generalizable Tumor Synthesis** *Qi Chen, Xiaoxi Chen, Haorui Song, Zhiwei Xiong, Alan Yuille, Chen Wei, Zongwei Zhou* CVPR | 29 Feb 2024 [paper](https://arxiv.org/pdf/2402.19470.pdf)
 

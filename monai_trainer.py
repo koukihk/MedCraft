@@ -180,7 +180,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     run_loss = AverageMeter()
     run_acc = AverageMeter()
 
-    folder = 'default'
+    folder = args.gen_folder_name
     if args.gmm:
         folder = 'gmm'
     elif args.ellipsoid:
