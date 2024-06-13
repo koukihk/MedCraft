@@ -2,6 +2,29 @@ This repository provides extensive examples of synthetic liver tumors generated 
 
 **Amazing**, right?
 
+## Model
+
+| Organ    | Tumor | Model             | Pre-trained? | Download                                                     |
+| -------- | ----- | ----------------- | ------------ | ------------------------------------------------------------ |
+| liver    | real  | unet              | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/liver/real/real.liver.no_pretrain.unet) |
+| liver    | real  | swin_unetrv2_base | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/liver/real/real.liver.no_pretrain.swin_unetrv2_base) |
+| liver    | synt  | unet              | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/liver/synt/synt.liver.no_pretrain.unet) |
+| liver    | synt  | swin_unetrv2_base | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/liver/synt/synt.liver.no_pretrain.swin_unetrv2_base) |
+| pancreas | real  | unet              | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/pancreas/real/real.pancreas.no_pretrain.unet) |
+| pancreas | real  | swin_unetrv2_base | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/pancreas/real/real.pancreas.no_pretrain.swin_unetrv2_base) |
+| pancreas | synt  | unet              | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/pancreas/synt/synt.pancreas.no_pretrain.unet) |
+| pancreas | synt  | swin_unetrv2_base | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/pancreas/synt/synt.pancreas.no_pretrain.swin_unetrv2_base) |
+| kidney   | real  | unet              | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/kidney/real/real.kidney.no_pretrain.unet) |
+| kidney   | real  | swin_unetrv2_base | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/kidney/real/real.kidney.no_pretrain.swin_unetrv2_base) |
+| kidney   | synt  | unet              | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/kidney/synt/synt.kidney.no_pretrain.unet) |
+| kidney   | synt  | swin_unetrv2_base | no           | [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main/kidney/synt/synt.kidney.no_pretrain.swin_unetrv2_base) |
+
+**You can download other materials from these links:**
+
+All other checkpoints: [link](https://huggingface.co/MrGiovanni/Pixel2Cancer/tree/main)
+
+Data: Liver ([link](https://www.dropbox.com/scl/fi/ulok1xpk5e6nzicfipqxd/04_LiTS.tar.gz?rlkey=amo7x516if5m85x13q2iddgpj&dl=0)), Kidney ([link](https://www.dropbox.com/scl/fi/i7gzoocjnxyrqiavwuwp1/05_KiTS.tar.gz?rlkey=02mxa8f9sabcpe1858ww9580o&dl=0)), Pancreas ([link](https://www.dropbox.com/scl/fi/p35mz72vnvc01epdhr95r/Task07_Pancreas.tar.gz?rlkey=9z6grnqt6dpmh5yzz299g3wqx&dl=0))
+
 ## 0. Installation
 
 #### Dataset
@@ -13,18 +36,30 @@ please download these datasets and save to `<data-path>` (user-defined).
 - 03 [Combined Healthy Abdominal Organ Segmentation (CHAOS)](https://chaos.grand-challenge.org/)
 - 04 [Liver Tumor Segmentation Challenge (LiTS)](https://competitions.codalab.org/competitions/17094)
 
-```
+```bash
 wget https://www.dropbox.com/s/jnv74utwh99ikus/01_Multi-Atlas_Labeling.tar.gz # 01 Multi-Atlas_Labeling.tar.gz (1.53 GB)
 wget https://www.dropbox.com/s/5yzdzb7el9r3o9i/02_TCIA_Pancreas-CT.tar.gz # 02 TCIA_Pancreas-CT.tar.gz (7.51 GB)
 wget https://www.dropbox.com/s/lzrhirei2t2vuwg/03_CHAOS.tar.gz # 03 CHAOS.tar.gz (925.3 MB)
 wget https://www.dropbox.com/s/2i19kuw7qewzo6q/04_LiTS.tar.gz # 04 LiTS.tar.gz (17.42 GB)
+wget https://huggingface.co/datasets/qicq1c/Pubilcdataset/resolve/main/10_Decathlon/Task03_Liver.tar.gz?download=true # Task03_Liver.tar.gz (28.7 GB)
+```
+
+#### Data Setting
+
+```bash
+# Task03_Liver training data list
+--json_dir /datafolds/fold_0.json
+--json_dir /datafolds/fold_1.json
+--json_dir /datafolds/fold_2.json
+--json_dir /datafolds/fold_3.json
+--json_dir /datafolds/fold_4.json
 ```
 
 #### Dependency
 
 The code is tested on `python 3.8, Pytorch 1.11`.
 
-```
+```bash
 conda create -n syn python=3.8
 source activate syn (or conda activate syn)
 cd SyntheticTumors
@@ -37,13 +72,13 @@ pip install -r requirements.txt
 
 Our synthetic algorithm requires label as `0: background, 1: liver`, you need to transfer the label before training AI model.
 
-```
+```python
 python transfer_label.py --data_path <data-path>  # <data-path> is user-defined data path to save datasets
 ```
 
 or you can just download the label
 
-```
+```bash
 wget https://www.dropbox.com/s/8e3hlza16vor05s/label.zip
 ```
 
