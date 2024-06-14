@@ -220,6 +220,9 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
     target_volume = (282, 244, 143)
     start = (x_start, y_start, z_start)
 
+    z_middle_start = int(z_start + 0.3 * (z_end - z_start))
+    z_middle_end = int(z_start + 0.7 * (z_end - z_start))
+
     loop_count = 0
     while loop_count < max_attempts:
         potential_point = gmm_model.sample(1)[0][0]
@@ -230,6 +233,12 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         # potential_point_in_liver = get_absolute_coordinate_in_liver(potential_point, liver_mask.shape, target_volume)
         # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
+
+        # Check if z coordinate is within the middle portion
+        if not (z_middle_start <= potential_point[2] <= z_middle_end):
+            loop_count += 1
+            continue
+
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
             if not is_edge_point(mask_scan, potential_point):
@@ -259,6 +268,9 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     target_volume = (282, 244, 143)
     start = (x_start, y_start, z_start)
 
+    z_middle_start = int(z_start + 0.3 * (z_end - z_start))
+    z_middle_end = int(z_start + 0.7 * (z_end - z_start))
+
     loop_count = 0
     while loop_count < max_attempts:
         potential_point = ellipsoid_model.get_random_point()
@@ -269,6 +281,12 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
         # potential_point_in_liver = get_absolute_coordinate_in_liver(potential_point, liver_mask.shape, target_volume)
         # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
+
+        # Check if z coordinate is within the middle portion
+        if not (z_middle_start <= potential_point[2] <= z_middle_end):
+            loop_count += 1
+            continue
+
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
             if not is_edge_point(mask_scan, potential_point):
@@ -623,7 +641,8 @@ def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, ou
     return processed_organ_region, density_organ_map
 
 
-def get_tumor(volume_scan, mask_scan, tumor_type, texture, gmm_list=[], ellipsoid_model=None, model_name=None):
+def get_tumor(volume_scan, mask_scan, tumor_type, texture, edge_advanced_blur,
+              gmm_list=[], ellipsoid_model=None, model_name=None):
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
     # if hu_processor:
@@ -643,6 +662,8 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, gmm_list=[], ellipsoi
     #     volume_scan = volume_scan.astype(volume_scan_type)
 
     sigma = np.random.uniform(1, 2)
+    if edge_advanced_blur:
+        sigma = np.random.uniform(1.5, 2.5)
     difference = np.random.uniform(65, 145)
 
     # blur the boundary
@@ -656,7 +677,9 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, gmm_list=[], ellipsoi
     return abnormally_full, abnormally_mask
 
 
-def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, gmm_list=[], ellipsoid_model=None, model_name=None):
+def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture,
+                   edge_advanced_blur,
+                   gmm_list=[], ellipsoid_model=None, model_name=None):
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
@@ -690,7 +713,7 @@ def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, gmm_list=[], ell
     # processed_organ_region, density_organ_map = Quantify(processed_organ_region, organ_hu_lowerbound,
     #                                                      organ_standard_val, outrange_standard_val)
 
-    liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture,
+    liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture, edge_advanced_blur,
                                          gmm_list, ellipsoid_model, model_name)
     volume_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_volume
     mask_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_mask

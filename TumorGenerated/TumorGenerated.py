@@ -35,6 +35,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.organ_standard_val = 0  # organ standard value
         self.threshold = 10  # threshold
         self.hu_processor = False
+        self.edge_advanced_blur = True
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
@@ -48,8 +49,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         sigma_bs = [4, 7]
         # sigma_bs = [5, 8]
         predefined_texture_shape = (420, 300, 320)
-        salt_prob = 0.01  # Adjust these probabilities as needed
-        pepper_prob = 0.01  # Adjust these probabilities as needed
+        # salt_prob = 0.01  # Adjust these probabilities as needed
+        # pepper_prob = 0.01  # Adjust these probabilities as needed
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
                 texture = get_predefined_texture_old(predefined_texture_shape, sigma_a, sigma_b)
@@ -65,6 +66,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
+                                                          self.edge_advanced_blur,
                                                           self.gmm_list, self.ellipsoid_model, self.model_name)
 
         return d
