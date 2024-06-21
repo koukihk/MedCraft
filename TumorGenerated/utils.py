@@ -220,9 +220,6 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
     target_volume = (282, 244, 143)
     start = (x_start, y_start, z_start)
 
-    z_middle_start = int(z_start + 0.3 * (z_end - z_start))
-    z_middle_end = int(z_start + 0.7 * (z_end - z_start))
-
     loop_count = 0
     while loop_count < max_attempts:
         potential_point = gmm_model.sample(1)[0][0]
@@ -231,13 +228,6 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
             continue
         potential_point = get_absolute_coordinate(potential_point, liver_mask.shape, target_volume, start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
-        # potential_point_in_liver = get_absolute_coordinate_in_liver(potential_point, liver_mask.shape, target_volume)
-        # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
-
-        # Check if z coordinate is within the middle portion
-        if not (z_middle_start <= potential_point[2] <= z_middle_end):
-            loop_count += 1
-            continue
 
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
@@ -251,6 +241,12 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
 
 
 def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
+    def is_within_middle_z_range(point, z_start, z_end):
+        z_length = z_end - z_start
+        lower_bound = z_start + 0.2 * z_length
+        upper_bound = z_start + 0.8 * z_length
+        return lower_bound <= point[2] <= upper_bound
+
     if ellipsoid_model is None:
         potential_point = random_select(mask_scan)
         return potential_point
@@ -268,9 +264,6 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     target_volume = (282, 244, 143)
     start = (x_start, y_start, z_start)
 
-    z_middle_start = int(z_start + 0.3 * (z_end - z_start))
-    z_middle_end = int(z_start + 0.7 * (z_end - z_start))
-
     loop_count = 0
     while loop_count < max_attempts:
         potential_point = ellipsoid_model.get_random_point()
@@ -279,17 +272,10 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
             continue
         potential_point = get_absolute_coordinate(potential_point, liver_mask.shape, target_volume, start)
         potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
-        # potential_point_in_liver = get_absolute_coordinate_in_liver(potential_point, liver_mask.shape, target_volume)
-        # potential_point_in_liver = np.clip(potential_point_in_liver, 0, np.array(liver_mask.shape) - 1).astype(int)
-
-        # Check if z coordinate is within the middle portion
-        if not (z_middle_start <= potential_point[2] <= z_middle_end):
-            loop_count += 1
-            continue
 
         if mask_scan[tuple(potential_point)] == 1:
-            # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_point):
+            # Check if the point is not at the edge and within the middle z range
+            if not is_edge_point(mask_scan, potential_point) and is_within_middle_z_range(potential_point, z_start, z_end):
                 return potential_point
 
         loop_count += 1
