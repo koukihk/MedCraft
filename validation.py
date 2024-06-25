@@ -42,6 +42,14 @@ parser.add_argument('--model', default='unet', type=str)
 parser.add_argument('--swin_type', default='tiny', type=str)
 
 
+def to_percentage(value):
+    return f"{value * 100:.2f}"
+
+
+def to_decimal(value):
+    return f"{value:.2f}"
+
+
 def denoise_pred(pred: np.ndarray):
     """
     # 0: background, 1: liver, 2: tumor.
@@ -286,9 +294,18 @@ def main():
         print("organ sd:", np.mean(liver_sd))
         print("organ rhd:", np.mean(liver_rhd))
         print("tumor dice:", np.mean(tumor_dice))
-        print("tumor nsd",np.mean(tumor_nsd))
+        print("tumor nsd", np.mean(tumor_nsd))
         print("tumor sd:", np.mean(tumor_sd))
         print("tumor rhd:", np.mean(tumor_rhd))
+
+        print("organ dice:", to_percentage(np.mean(liver_dice)))
+        print("organ nsd:", to_percentage(np.mean(liver_nsd)))
+        print("organ sd:", to_decimal(np.mean(liver_sd)))
+        print("organ rhd:", to_decimal(np.mean(liver_rhd)))
+        print("tumor dice:", to_percentage(np.mean(tumor_dice)))
+        print("tumor nsd:", to_percentage(np.mean(tumor_nsd)))
+        print("tumor sd:", to_decimal(np.mean(tumor_sd)))
+        print("tumor rhd:", to_decimal(np.mean(tumor_rhd)))
 
         results = [
                 ["organ dice", np.mean(liver_dice)],

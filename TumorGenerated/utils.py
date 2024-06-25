@@ -275,7 +275,8 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
 
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge and within the middle z range
-            if not is_edge_point(mask_scan, potential_point) and is_within_middle_z_range(potential_point, z_start, z_end):
+            if not is_edge_point(mask_scan, potential_point):
+                # and is_within_middle_z_range(potential_point, z_start, z_end)
                 return potential_point
 
         loop_count += 1
@@ -648,8 +649,6 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, edge_advanced_blur,
     #     volume_scan = volume_scan.astype(volume_scan_type)
 
     sigma = np.random.uniform(1, 2)
-    if edge_advanced_blur:
-        sigma = np.random.uniform(1.5, 2.5)
     difference = np.random.uniform(65, 145)
 
     # blur the boundary
