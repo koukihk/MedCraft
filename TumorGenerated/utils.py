@@ -127,7 +127,7 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
 
     # Normalize to 0-1
     a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (
-                np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
+            np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
 
     # Step 4: Gaussian filter
     # a_2 = gaussian_filter(a, sigma=sigma_a)
@@ -202,7 +202,7 @@ def get_absolute_coordinate(relative_coordinate, original_shape, target_volume, 
     return np.array([absolute_x, absolute_y, absolute_z], dtype=float)
 
 
-def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
+def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
     if gmm_model is None:
         potential_point = random_select(mask_scan)
         return potential_point
@@ -231,7 +231,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
 
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_point):
+            if not is_edge_point(mask_scan, potential_point, edge_op):
                 return potential_point
 
         loop_count += 1
@@ -240,7 +240,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600):
     return potential_point
 
 
-def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
+def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="sobel"):
     def is_within_middle_z_range(point, z_start, z_end):
         z_length = z_end - z_start
         lower_bound = z_start + 0.2 * z_length
@@ -250,6 +250,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     if ellipsoid_model is None:
         potential_point = random_select(mask_scan)
         return potential_point
+
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
@@ -275,7 +276,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
 
         if mask_scan[tuple(potential_point)] == 1:
             # Check if the point is not at the edge and within the middle z range
-            if not is_edge_point(mask_scan, potential_point):
+            if not is_edge_point(mask_scan, potential_point, edge_op):
                 # and is_within_middle_z_range(potential_point, z_start, z_end)
                 return potential_point
 
@@ -285,39 +286,40 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600):
     return potential_point
 
 
-def is_edge_point(mask_scan, potential_point, neighborhood_size=(3, 3, 3), threshold=5):
-    # Define the boundaries of the neighborhood around the potential point
-    min_bounds = np.maximum(potential_point - np.array(neighborhood_size) // 2, 0)
-    max_bounds = np.minimum(potential_point + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
+def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_size=(3, 3, 3), volume_threshold=5,
+                  sobel_threshold=5):
+    if edge_op is "volume":
+        # Define the boundaries of the neighborhood around the potential point
+        min_bounds = np.maximum(potential_point - np.array(neighborhood_size) // 2, 0)
+        max_bounds = np.minimum(potential_point + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
 
-    # Extract the neighborhood volume from the mask scan
-    neighborhood_volume = mask_scan[min_bounds[0]:max_bounds[0] + 1,
-                          min_bounds[1]:max_bounds[1] + 1,
-                          min_bounds[2]:max_bounds[2] + 1]
+        # Extract the neighborhood volume from the mask scan
+        neighborhood_volume = mask_scan[min_bounds[0]:max_bounds[0] + 1,
+                                        min_bounds[1]:max_bounds[1] + 1,
+                                        min_bounds[2]:max_bounds[2] + 1]
 
-    # Count the number of liver voxels in the neighborhood
-    liver_voxel_count = np.sum(neighborhood_volume == 1)
+        # Count the number of liver voxels in the neighborhood
+        liver_voxel_count = np.sum(neighborhood_volume == 1)
 
-    # Check if the liver voxel count is below the threshold
-    if liver_voxel_count < threshold:
-        return True  # Potential point is considered to be on the edge
-    else:
-        return False  # Potential point is considered to be inside the liver
+        # Check if the liver voxel count is below the threshold
+        if liver_voxel_count < volume_threshold:
+            return True  # Potential point is considered to be on the edge
+        else:
+            return False  # Potential point is considered to be inside the liver
 
+    elif edge_op is "sobel":
+        # Apply Sobel filter to detect edges
+        sobel_x = sobel(mask_scan, axis=0)
+        sobel_y = sobel(mask_scan, axis=1)
+        sobel_z = sobel(mask_scan, axis=2)
 
-def is_edge_point_sobel(mask_scan, potential_point, threshold=5):
-    # Apply Sobel filter to detect edges
-    sobel_x = sobel(mask_scan, axis=0)
-    sobel_y = sobel(mask_scan, axis=1)
-    sobel_z = sobel(mask_scan, axis=2)
+        # Calculate the magnitude of the gradient
+        gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2 + sobel_z ** 2)
 
-    # Calculate the magnitude of the gradient
-    gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2 + sobel_z ** 2)
+        # Determine if the potential point is near an edge
+        gradient_value = gradient_magnitude[tuple(potential_point)]
 
-    # Determine if the potential point is near an edge
-    gradient_value = gradient_magnitude[tuple(potential_point)]
-
-    return gradient_value > threshold
+        return gradient_value > sobel_threshold
 
 
 # Step 2 : generate the ellipsoid
