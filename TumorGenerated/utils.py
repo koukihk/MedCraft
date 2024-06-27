@@ -121,9 +121,10 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
 
     # Step 3: Wavelet transform
-    coeffs = pywt.wavedec2(a_denoised, wavelet='haar', level=2)
-    coeffs[1:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[1:]]
-    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='haar')
+    coeffs = pywt.wavedec2(a_denoised, wavelet='db4', level=2)
+    coeffs[1] = tuple(0.3 * v for v in coeffs[1])  # 保留一些高频细节
+    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]
+    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='db4')
 
     # Normalize to 0-1
     a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (
@@ -240,7 +241,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
     return potential_point
 
 
-def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="sobel"):
+def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="volume"):
     def is_within_middle_z_range(point, z_start, z_end):
         z_length = z_end - z_start
         lower_bound = z_start + 0.2 * z_length
@@ -651,6 +652,8 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, edge_advanced_blur,
     #     volume_scan = volume_scan.astype(volume_scan_type)
 
     sigma = np.random.uniform(1, 2)
+    if edge_advanced_blur:
+        sigma = np.random.uniform(1.0, 2.1)
     difference = np.random.uniform(65, 145)
 
     # blur the boundary
