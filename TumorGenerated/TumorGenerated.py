@@ -34,8 +34,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
         self.organ_standard_val = 0  # organ standard value
         self.threshold = 10  # threshold
-        self.hu_processor = False
-        self.edge_advanced_blur = True
+        self.hu_processor = True
+        self.edge_advanced_blur = False
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
@@ -53,7 +53,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         # pepper_prob = 0.01  # Adjust these probabilities as needed
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture_old(predefined_texture_shape, sigma_a, sigma_b)
                 # texture = add_salt_and_pepper_noise(texture, salt_prob, pepper_prob, 3)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
@@ -66,7 +66,10 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
-                                                          self.edge_advanced_blur,
-                                                          self.gmm_list, self.ellipsoid_model, self.model_name)
+                                                          self.hu_processor, self.steps, self.kernel_size,
+                                                          self.organ_standard_val, self.organ_hu_lowerbound,
+                                                          self.outrange_standard_val, self.threshold,
+                                                          self.edge_advanced_blur, self.gmm_list, self.ellipsoid_model,
+                                                          self.model_name)
 
         return d

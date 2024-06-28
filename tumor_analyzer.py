@@ -21,6 +21,7 @@ from scipy.optimize import minimize
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import KFold
+from skimage.feature import greycomatrix, greycoprops
 from tqdm import tqdm
 from deap import base, creator, tools, algorithms
 
