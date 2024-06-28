@@ -6,7 +6,7 @@ from monai.config import KeysCollection
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
-from .utils import SynthesisTumor, get_predefined_texture, get_predefined_texture_old, add_salt_and_pepper_noise
+from .utils import SynthesisTumor, get_predefined_texture, get_predefined_texture_old
 
 Organ_List = {'liver': [1,2], 'pancreas': [1,2], 'kidney': [1,2]}
 Organ_HU = {'liver': [100, 160],'pancreas': [100, 160], 'kidney': [140, 200]}
@@ -45,16 +45,11 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         # self.textures = pre_define 10 texture
         self.textures = []
         sigma_as = [3, 6, 9, 12, 15]
-        # sigma_as = [6, 9, 12, 15, 18]
         sigma_bs = [4, 7]
-        # sigma_bs = [5, 8]
         predefined_texture_shape = (420, 300, 320)
-        # salt_prob = 0.01  # Adjust these probabilities as needed
-        # pepper_prob = 0.01  # Adjust these probabilities as needed
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
                 texture = get_predefined_texture_old(predefined_texture_shape, sigma_a, sigma_b)
-                # texture = add_salt_and_pepper_noise(texture, salt_prob, pepper_prob, 3)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
 
@@ -66,10 +61,9 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
-                                                          self.hu_processor, self.steps, self.kernel_size,
-                                                          self.organ_standard_val, self.organ_hu_lowerbound,
-                                                          self.outrange_standard_val, self.threshold,
-                                                          self.edge_advanced_blur, self.gmm_list, self.ellipsoid_model,
-                                                          self.model_name)
+                                                          self.hu_processor, self.organ_standard_val,
+                                                          self.organ_hu_lowerbound,
+                                                          self.outrange_standard_val, self.edge_advanced_blur,
+                                                          self.gmm_list, self.ellipsoid_model, self.model_name)
 
         return d

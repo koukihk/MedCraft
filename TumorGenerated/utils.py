@@ -632,8 +632,7 @@ def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, ou
 
 
 def get_tumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, edge_advanced_blur, organ_hu_lowerbound,
-              organ_standard_val, outrange_standard_val, threshold, density_organ_map, gmm_list=[],
-              ellipsoid_model=None, model_name=None):
+              outrange_standard_val, density_organ_map, gmm_list=[], ellipsoid_model=None, model_name=None):
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
     if hu_processor:
@@ -673,8 +672,8 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, edge_ad
     return abnormally_full, abnormally_mask
 
 
-def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, steps, kernel_size, organ_standard_val,
-                   organ_hu_lowerbound, outrange_standard_val, threshold, edge_advanced_blur,
+def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, organ_standard_val,
+                   organ_hu_lowerbound, outrange_standard_val, edge_advanced_blur,
                    gmm_list=[], ellipsoid_model=None, model_name=None):
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
@@ -710,7 +709,8 @@ def SynthesisTumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, st
                                                          organ_standard_val, outrange_standard_val)
 
     liver_volume, liver_mask = get_tumor(liver_volume, liver_mask, tumor_type, cut_texture, hu_processor,
-                                         edge_advanced_blur, gmm_list, ellipsoid_model, model_name)
+                                         edge_advanced_blur, organ_hu_lowerbound, outrange_standard_val,
+                                         density_organ_map, gmm_list, ellipsoid_model, model_name)
     volume_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_volume
     mask_scan[x_start:x_end, y_start:y_end, z_start:z_end] = liver_mask
 
