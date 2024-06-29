@@ -636,9 +636,18 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, edge_ad
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
     if hu_processor:
+        x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
+        y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
+        z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
+
+        x_start, x_end = max(0, x_start + 1), min(mask_scan.shape[0], x_end - 1)
+        y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
+        z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
+
+        tumor_region = geo_mask[x_start:x_end, y_start:y_end, z_start:z_end].astype(bool)
+
         volume_scan_type = volume_scan.dtype
         volume_scan = volume_scan.astype(np.float32)
-        tumor_region = geo_mask.astype(bool)
         density_organ_map = density_organ_map.astype(np.float32)
 
         kernel = (3, 3)
