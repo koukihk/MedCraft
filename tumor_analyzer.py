@@ -13,17 +13,16 @@ import numpy as np
 import plotly.graph_objs as go
 import plotly.io as pio
 import plotly.offline as pyo
+from deap import base, creator, tools, algorithms
 from scipy import interpolate
 from scipy import ndimage
+from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
 from scipy.spatial.distance import mahalanobis
-from scipy.optimize import minimize
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import KFold
-from skimage.feature import greycomatrix, greycoprops
 from tqdm import tqdm
-from deap import base, creator, tools, algorithms
 
 
 class EllipsoidOptimizer:

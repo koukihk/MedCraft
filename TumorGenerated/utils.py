@@ -638,7 +638,7 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, edge_ad
     if hu_processor:
         volume_scan_type = volume_scan.dtype
         volume_scan = volume_scan.astype(np.float32)
-        tumor_region = geo_mask.astype(np.float32)
+        tumor_region = geo_mask.astype(bool)
         density_organ_map = density_organ_map.astype(np.float32)
 
         kernel = (3, 3)
