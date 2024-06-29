@@ -636,15 +636,7 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, edge_ad
     geo_mask = get_fixed_geo(mask_scan, tumor_type, gmm_list, ellipsoid_model, model_name)
 
     if hu_processor:
-        x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
-        y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
-        z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
-
-        x_start, x_end = max(0, x_start + 1), min(mask_scan.shape[0], x_end - 1)
-        y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
-        z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
-
-        tumor_region = geo_mask[x_start:x_end, y_start:y_end, z_start:z_end].astype(bool)
+        tumor_region = geo_mask.astype(np.float32)
 
         volume_scan_type = volume_scan.dtype
         volume_scan = volume_scan.astype(np.float32)
@@ -656,9 +648,9 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, hu_processor, edge_ad
 
         interval = (outrange_standard_val - organ_hu_lowerbound) / 3
         # deal with the conflict vessel
-        vessel_condition = (density_organ_map == outrange_standard_val) & tumor_region
+        vessel_condition = (density_organ_map == outrange_standard_val) & tumor_region.astype(bool)
         # deal with the high intensity tissue
-        high_tissue_condition = (density_organ_map == (organ_hu_lowerbound + 2 * interval)) & tumor_region
+        high_tissue_condition = (density_organ_map == (organ_hu_lowerbound + 2 * interval)) & tumor_region.astype(bool)
 
         volume_scan[vessel_condition] *= (organ_hu_lowerbound + interval / 2) / outrange_standard_val
         volume_scan[high_tissue_condition] *= (organ_hu_lowerbound + 2 * interval) / outrange_standard_val
