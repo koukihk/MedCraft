@@ -175,18 +175,6 @@ def random_select(mask_scan):
     return potential_points
 
 
-def get_absolute_coordinate_in_liver(relative_coordinate, original_shape, target_volume):
-    x_ratio = original_shape[0] / target_volume[0]
-    y_ratio = original_shape[1] / target_volume[1]
-    z_ratio = original_shape[2] / target_volume[2]
-
-    absolute_x = relative_coordinate[0] * x_ratio
-    absolute_y = relative_coordinate[1] * y_ratio
-    absolute_z = relative_coordinate[2] * z_ratio
-
-    return np.array([absolute_x, absolute_y, absolute_z], dtype=float)
-
-
 def get_absolute_coordinate(relative_coordinate, original_shape, target_volume, start):
     x_ratio = original_shape[0] / target_volume[0]
     y_ratio = original_shape[1] / target_volume[1]
@@ -287,7 +275,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op=
     return potential_point
 
 
-def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_size=(3, 3, 3), volume_threshold=5,
+def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_size=(5, 5, 5), volume_threshold=10,
                   sobel_threshold=5):
     if edge_op is "volume":
         # Define the boundaries of the neighborhood around the potential point

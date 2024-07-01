@@ -825,29 +825,6 @@ class TumorAnalyzer:
 
         return tumors
 
-    @staticmethod
-    def Quantify(processed_organ_region, organ_hu_lowerbound, organ_standard_val, outrange_standard_val):
-        # Quantify the intensity of differnent part of the organ
-        interval = (outrange_standard_val - organ_hu_lowerbound) / 3
-        processed_organ_region[(processed_organ_region < (
-                organ_hu_lowerbound + interval))] = organ_hu_lowerbound
-        processed_organ_region[(processed_organ_region >= (organ_hu_lowerbound + interval)) & (
-                processed_organ_region < (organ_hu_lowerbound + 2 * interval))] = organ_hu_lowerbound + interval
-        processed_organ_region[(processed_organ_region >= (organ_hu_lowerbound + 2 * interval)) & (
-                processed_organ_region < outrange_standard_val)] = organ_hu_lowerbound + 2 * interval
-
-        density_organ_map = processed_organ_region.copy()
-
-        processed_organ_region[processed_organ_region < outrange_standard_val] = organ_standard_val
-        processed_organ_region[processed_organ_region == outrange_standard_val] = 1
-
-        processed_organ_region[processed_organ_region == 1] = outrange_standard_val
-
-        density_organ_map[(density_organ_map == outrange_standard_val) & (
-                processed_organ_region != outrange_standard_val)] = organ_hu_lowerbound + 2 * interval
-
-        return processed_organ_region, density_organ_map
-
 
     def get_gmm_model(self, model_type='global'):
         """
