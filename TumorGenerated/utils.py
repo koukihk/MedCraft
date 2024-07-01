@@ -229,11 +229,11 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
     return potential_point
 
 
-def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="volume"):
+def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="sobel"):
     def is_within_middle_z_range(point, z_start, z_end):
         z_length = z_end - z_start
-        lower_bound = z_start + 0.2 * z_length
-        upper_bound = z_start + 0.8 * z_length
+        lower_bound = z_start + 0.3 * z_length
+        upper_bound = z_start + 0.7 * z_length
         return lower_bound <= point[2] <= upper_bound
 
     if ellipsoid_model is None:
@@ -276,7 +276,7 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op=
 
 
 def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_size=(5, 5, 5), volume_threshold=10,
-                  sobel_threshold=5):
+                  sobel_threshold=175):
     if edge_op is "volume":
         # Define the boundaries of the neighborhood around the potential point
         min_bounds = np.maximum(potential_point - np.array(neighborhood_size) // 2, 0)
