@@ -311,32 +311,6 @@ def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_siz
         return gradient_value > sobel_threshold
 
 
-# Step 2 : generate the ellipsoid
-def get_ellipsoid(x, y, z):
-    """"
-    x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
-    """
-    sh = (4 * x, 4 * y, 4 * z)
-    out = np.zeros(sh, int)
-    aux = np.zeros(sh)
-    radii = np.array([x, y, z])
-    com = np.array([2 * x, 2 * y, 2 * z])  # center point
-
-    # calculate the ellipsoid
-    bboxl = np.floor(com - radii).clip(0, None).astype(int)
-    bboxh = (np.ceil(com + radii) + 1).clip(None, sh).astype(int)
-    roi = out[tuple(map(slice, bboxl, bboxh))]
-    roiaux = aux[tuple(map(slice, bboxl, bboxh))]
-    logrid = *map(np.square, np.ogrid[tuple(
-        map(slice, (bboxl - com) / radii, (bboxh - com - 1) / radii, 1j * (bboxh - bboxl)))]),
-    dst = (1 - sum(logrid)).clip(0, None)
-    mask = dst > roiaux
-    roi[mask] = 1
-    np.copyto(roiaux, dst, where=mask)
-
-    return out
-
-
 def get_sphere(r):
     """
     r is the radius of the sphere.
@@ -372,6 +346,36 @@ def get_sphere(r):
 
     # Update the auxiliary array (though not strictly necessary for a sphere)
     np.copyto(roiaux, 1 - dst, where=mask)
+
+    return out
+
+
+# Step 2 : generate the ellipsoid
+def get_ellipsoid(x, y, z, body="ellipsoid"):
+    """"
+    x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
+    """
+    if body is "sphere":
+        r = random.choice([x, y, z])
+        return get_sphere(r)
+
+    sh = (4 * x, 4 * y, 4 * z)
+    out = np.zeros(sh, int)
+    aux = np.zeros(sh)
+    radii = np.array([x, y, z])
+    com = np.array([2 * x, 2 * y, 2 * z])  # center point
+
+    # calculate the ellipsoid
+    bboxl = np.floor(com - radii).clip(0, None).astype(int)
+    bboxh = (np.ceil(com + radii) + 1).clip(None, sh).astype(int)
+    roi = out[tuple(map(slice, bboxl, bboxh))]
+    roiaux = aux[tuple(map(slice, bboxl, bboxh))]
+    logrid = *map(np.square, np.ogrid[tuple(
+        map(slice, (bboxl - com) / radii, (bboxh - com - 1) / radii, 1j * (bboxh - bboxl)))]),
+    dst = (1 - sum(logrid)).clip(0, None)
+    mask = dst > roiaux
+    roi[mask] = 1
+    np.copyto(roiaux, dst, where=mask)
 
     return out
 
