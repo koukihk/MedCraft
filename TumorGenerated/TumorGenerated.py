@@ -34,8 +34,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
         self.organ_standard_val = 0  # organ standard value
         self.threshold = 10  # threshold
-        self.hu_processor = False
-        self.edge_advanced_blur = False
+        self.hu_processor = True
+        self.edge_advanced_blur = True
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 

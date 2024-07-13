@@ -88,18 +88,25 @@ class EllipsoidOptimizer:
 
 
 class EllipsoidFitter:
-    def __init__(self, data,
-                 scale_factors=[2.3, 2.5, 2.9],
-                 center_offset=[-11.5, -8, -1]):
-        self.data = data
+    def __init__(self, data=None, scale_factors=[2.3, 2.5, 2.9], center_offset=[-11.5, -8, -1]):
+        self.data = np.array(data) if data is not None else np.array([])
         self.scale_factors = scale_factors
         self.center_offset = np.array(center_offset)
-        self.filtered_data = self._remove_outliers(data)
-        self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
+        self.center = None
+        self.axes = None
+        self.radii = None
+
+        if self.data.size > 0:
+            self.filtered_data = self._remove_outliers(self.data)
+            self.center, self.axes, self.radii = self._fit_ellipsoid(self.filtered_data)
 
     def _remove_outliers(self, data):
+        if data.size == 0:
+            return np.array([])
         mean = np.mean(data, axis=0)
         cov_matrix = np.cov(data, rowvar=False)
+        if np.linalg.det(cov_matrix) == 0:
+            return data  # 如果协方差矩阵是奇异的，返回原始数据
         inv_cov_matrix = np.linalg.inv(cov_matrix)
         mahalanobis_distances = [mahalanobis(sample, mean, inv_cov_matrix) for sample in data]
         threshold = np.percentile(mahalanobis_distances, 98)
@@ -107,17 +114,20 @@ class EllipsoidFitter:
         return filtered_data
 
     def _fit_ellipsoid(self, data):
+        if data.size == 0:
+            return None, None, None
         pca = PCA(n_components=3)
         pca.fit(data)
         center = np.round(np.mean(data, axis=0) + self.center_offset).astype(int)
         axes = np.round(pca.components_, 1)
         variances = pca.explained_variance_
         radii = np.round(np.sqrt(variances) * self.scale_factors).astype(int)
-        # Ensure no radii are zero by adding a small epsilon value
         radii = np.where(radii == 0, 1, radii)
         return center, axes, radii
 
     def evaluate(self, scale_factors, center_offset):
+        if self.data.size == 0:
+            return 0, 0  # 如果没有数据，返回默认值
         self.scale_factors = scale_factors
         self.center_offset = center_offset
         self.filtered_data = self._remove_outliers(self.data)
@@ -126,7 +136,7 @@ class EllipsoidFitter:
         distances = np.linalg.norm((self.filtered_data - self.center) @ np.linalg.inv(np.diag(self.radii)), axis=1)
         coverage = np.mean(distances <= 1)
         volume = (4 / 3) * np.pi * np.prod(self.radii)
-        compactness = 1 / volume  # Smaller volume indicates better compactness
+        compactness = 1 / volume
 
         return coverage, compactness
 
@@ -134,6 +144,12 @@ class EllipsoidFitter:
         self.center = np.array(center)
         self.axes = np.array(axes)
         self.radii = np.array(radii)
+
+    @classmethod
+    def from_precomputed_parameters(cls, center, axes, radii):
+        instance = cls()
+        instance.set_precomputed_parameters(center, axes, radii)
+        return instance
 
     def get_random_point(self):
         phi = np.random.uniform(0, 2 * np.pi)
