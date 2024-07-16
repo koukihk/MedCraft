@@ -8,9 +8,10 @@ from monai.transforms.transform import MapTransform, RandomizableTransform
 
 from .utils import SynthesisTumor, get_predefined_texture, get_predefined_texture_old
 
-Organ_List = {'liver': [1,2], 'pancreas': [1,2], 'kidney': [1,2]}
-Organ_HU = {'liver': [100, 160],'pancreas': [100, 160], 'kidney': [140, 200]}
-steps = {'liver': 150, 'pancreas': 80, 'kidney': 80}
+Organ_List = {'liver': [1, 2], 'pancreas': [1, 2], 'kidney': [1, 2]}
+Organ_HU = {'liver': [70, 140], 'pancreas': [100, 160], 'kidney': [140, 200]}
+
+
 class TumorGenerated(RandomizableTransform, MapTransform):
     def __init__(self,
                  keys: KeysCollection,
@@ -28,14 +29,12 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.gmm_list = gmm_list
         self.ellipsoid_model = ellipsoid_model
         self.model_name = model_name
-        self.steps = steps['liver']  # step
         self.kernel_size = (3, 3, 3)  # Receptive Field
         self.organ_hu_lowerbound = Organ_HU['liver'][0]  # organ hu lowerbound
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
-        self.organ_standard_val = 0  # organ standard value
-        self.threshold = 10  # threshold
+        self.organ_standard_val = 110  # organ standard value
         self.hu_processor = True
-        self.edge_advanced_blur = True
+        self.edge_advanced_blur = False
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
