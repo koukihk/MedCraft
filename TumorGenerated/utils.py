@@ -88,10 +88,9 @@ def get_texture(mask_shape):
 
 
 # here we want to get predefined texutre:
-def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
+def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     # uniform noise generate
     a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    # a = generate_simplex_noise(mask_shape, 0.5)
     a_2 = gaussian_filter(a, sigma=sigma_a)
     scale = np.random.uniform(0.19, 0.21)
     base = np.random.uniform(0.04, 0.06)
@@ -112,7 +111,7 @@ def get_predefined_texture_old(mask_shape, sigma_a, sigma_b):
 
 
 # here we want to get predefined texutre:
-def get_predefined_texture(mask_shape, sigma_a, sigma_b):
+def get_predefined_texture_a2f(mask_shape, sigma_a, sigma_b):
     # Step 1: Uniform noise generate
     a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
     # a = generate_simplex_noise(mask_shape, 0.5)
@@ -355,7 +354,7 @@ def get_ellipsoid(x, y, z, body="ellipsoid"):
     """"
     x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
     """
-    if body is "sphere":
+    if random.random() < 0.15 and body == "sphere":
         r = random.choice([x, y, z])
         return get_sphere(r)
 

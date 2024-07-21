@@ -6,10 +6,10 @@ from monai.config import KeysCollection
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
-from .utils import SynthesisTumor, get_predefined_texture, get_predefined_texture_old
+from .utils import SynthesisTumor, get_predefined_texture_a2f, get_predefined_texture
 
 Organ_List = {'liver': [1, 2], 'pancreas': [1, 2], 'kidney': [1, 2]}
-Organ_HU = {'liver': [70, 140], 'pancreas': [100, 160], 'kidney': [140, 200]}
+Organ_HU = {'liver': [100, 160], 'pancreas': [100, 160], 'kidney': [140, 200]}
 
 
 class TumorGenerated(RandomizableTransform, MapTransform):
@@ -32,8 +32,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.kernel_size = (3, 3, 3)  # Receptive Field
         self.organ_hu_lowerbound = Organ_HU['liver'][0]  # organ hu lowerbound
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
-        self.organ_standard_val = 110  # organ standard value
-        self.hu_processor = True
+        self.organ_standard_val = 0  # organ standard value
+        self.hu_processor = False
         self.edge_advanced_blur = False
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
@@ -48,7 +48,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         predefined_texture_shape = (420, 300, 320)
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture_old(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture(predefined_texture_shape, sigma_a, sigma_b)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
 
