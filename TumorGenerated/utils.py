@@ -228,7 +228,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
     return potential_point
 
 
-def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="volume"):
+def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="sobel"):
     def is_within_middle_z_range(point, z_start, z_end):
         z_length = z_end - z_start
         lower_bound = z_start + 0.3 * z_length
@@ -354,10 +354,6 @@ def get_ellipsoid(x, y, z, body="ellipsoid"):
     """"
     x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
     """
-    if random.random() < 0.15 and body == "sphere":
-        r = random.choice([x, y, z])
-        return get_sphere(r)
-
     sh = (4 * x, 4 * y, 4 * z)
     out = np.zeros(sh, int)
     aux = np.zeros(sh)

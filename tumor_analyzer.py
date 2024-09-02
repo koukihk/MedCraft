@@ -88,7 +88,7 @@ class EllipsoidOptimizer:
 
 
 class EllipsoidFitter:
-    def __init__(self, data=None, scale_factors=[2.3, 2.5, 2.9], center_offset=[-11.5, -8, -1]):
+    def __init__(self, data=None, scale_factors=[3, 3, 3], center_offset=[0, 0, 0]):
         self.data = np.array(data) if data is not None else np.array([])
         self.scale_factors = scale_factors
         self.center_offset = np.array(center_offset)

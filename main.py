@@ -298,38 +298,37 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
 
     else:
         train_transform = transforms.Compose(
-            [
-                transforms.LoadImaged(keys=["image", "label"]),
-                transforms.AddChanneld(keys=["image", "label"]),
-                transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
-                transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                transforms.ScaleIntensityRanged(
-                    keys=["image"], a_min=-21, a_max=189,
-                    b_min=0.0, b_max=1.0, clip=True,
-                ),
-                transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"],
-                                       spatial_size=[96, 96, 96]),
-                #             transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
-                #             transforms.RandSpatialCropd(keys=["image", "label"], roi_size=roi_size, random_size=False),
-                transforms.RandCropByPosNegLabeld(
-                    keys=["image", "label"],
-                    label_key="label",
-                    spatial_size=(96, 96, 96),
-                    pos=1,
-                    neg=1,
-                    num_samples=1,
-                    image_key="image",
-                    image_threshold=0,
-                ),
-                transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=0),
-                transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
-                transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2),
-                transforms.RandRotate90d(keys=["image", "label"], prob=0.2, max_k=3),
-                #             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-                transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=0.15),
-                transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=0.15),
-                transforms.ToTensord(keys=["image", "label"]),
-            ]
+        [
+            transforms.LoadImaged(keys=["image", "label"]),
+            transforms.AddChanneld(keys=["image", "label"]),
+            transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
+            transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
+            transforms.ScaleIntensityRanged(
+                keys=["image"], a_min=-21, a_max=189,
+                b_min=0.0, b_max=1.0, clip=True,
+            ),
+            transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"], spatial_size=[96, 96, 96]),
+    #             transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
+    #             transforms.RandSpatialCropd(keys=["image", "label"], roi_size=roi_size, random_size=False),
+            transforms.RandCropByPosNegLabeld(
+                keys=["image", "label"],
+                label_key="label",
+                spatial_size=(96, 96, 96),
+                pos=1,
+                neg=1,
+                num_samples=1,
+                image_key="image",
+                image_threshold=0,
+            ),
+            transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=0),
+            transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
+            transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2),
+            transforms.RandRotate90d(keys=["image", "label"], prob=0.2, max_k=3),
+    #             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=0.15),
+            transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=0.15),
+            transforms.ToTensord(keys=["image", "label"]),
+        ]
         )
 
     val_transform = transforms.Compose(
@@ -406,11 +405,14 @@ def main_worker(gpu, args):
         # tumor_data = np.array([tumor.position for tumor in tumor_data])
         # ellipsoid_model = EllipsoidFitter(tumor_data)
         # Setting precomputed parameters
-        best_center = [166, 143, 80]
-        best_axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
-        best_radii = [213, 167, 82]
+        center = [166, 143, 80]
+        axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
+        radii = [213, 167, 82]
+        # center = [165, 140, 80]
+        # axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
+        # radii = [210, 170, 80]
         # ellipsoid_model.set_precomputed_parameters(best_center, best_axes, best_radii)
-        ellipsoid_model = EllipsoidFitter.from_precomputed_parameters(best_center, best_axes, best_radii)
+        ellipsoid_model = EllipsoidFitter.from_precomputed_parameters(center, axes, radii)
         model_name = 'ellipsoid'
         end_time = time.time()
         duration = end_time - start_time
