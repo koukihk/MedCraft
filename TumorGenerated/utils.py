@@ -228,7 +228,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
     return potential_point
 
 
-def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="sobel"):
+def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="both"):
     def is_within_middle_z_range(point, z_start, z_end):
         z_length = z_end - z_start
         lower_bound = z_start + 0.3 * z_length
@@ -276,7 +276,8 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op=
 
 def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_size=(3, 3, 3), volume_threshold=5,
                   sobel_threshold=405):
-    if edge_op is "volume":
+    # 定义体积检测方法
+    def check_volume():
         # Define the boundaries of the neighborhood around the potential point
         min_bounds = np.maximum(potential_point - np.array(neighborhood_size) // 2, 0)
         max_bounds = np.minimum(potential_point + np.array(neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
@@ -290,12 +291,10 @@ def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_siz
         liver_voxel_count = np.sum(neighborhood_volume == 1)
 
         # Check if the liver voxel count is below the threshold
-        if liver_voxel_count < volume_threshold:
-            return True  # Potential point is considered to be on the edge
-        else:
-            return False  # Potential point is considered to be inside the liver
+        return liver_voxel_count < volume_threshold
 
-    elif edge_op is "sobel":
+    # 定义Sobel检测方法
+    def check_sobel():
         # Apply Sobel filter to detect edges
         sobel_x = sobel(mask_scan, axis=0)
         sobel_y = sobel(mask_scan, axis=1)
@@ -308,6 +307,17 @@ def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_siz
         gradient_value = gradient_magnitude[tuple(potential_point)]
 
         return gradient_value > sobel_threshold
+
+    # 根据选择的操作模式判断是否为边缘点
+    if edge_op == "volume":
+        return check_volume()
+    elif edge_op == "sobel":
+        return check_sobel()
+    elif edge_op == "both":
+        # 同时进行体积和Sobel检测，并要求两者都满足才认为是边缘点
+        return check_volume() or check_sobel()
+    else:
+        raise ValueError("Invalid edge_op option. Choose from 'volume', 'sobel', or 'both'.")
 
 
 def get_sphere(r):
