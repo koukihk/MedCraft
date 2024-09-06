@@ -8,15 +8,8 @@ import pywt
 from noise import snoise3
 from scipy.ndimage import gaussian_filter, median_filter, sobel
 from skimage.restoration import denoise_tv_chambolle
-
-
-def generate_simplex_noise(shape, scale):
-    noise = np.zeros(shape)
-    for x in range(shape[0]):
-        for y in range(shape[1]):
-            for z in range(shape[2]):
-                noise[x, y, z] = snoise3(x * scale, y * scale, z * scale)
-    return noise
+from skimage import exposure
+from skimage.filters import gabor
 
 
 def add_salt_and_pepper_noise(image, salt_prob, pepper_prob, median_filter_size=3):
@@ -110,8 +103,49 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     return Bj
 
 
+def get_predefined_texture_A(mask_shape, sigma_a, sigma_b):
+    # Step 1: Uniform noise generation with larger range for higher contrast
+    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+
+    # Step 2: Apply Gaussian filter to smoothen the noise
+    a_2 = gaussian_filter(a, sigma=sigma_a)
+
+    # Step 3: Scale and normalize the filtered noise
+    scale = np.random.uniform(0.19, 0.21)
+    base = np.random.uniform(0.04, 0.06)
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+
+    # Step 4: Add localized random noise for heterogeneity
+    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    b = (a > random_sample).astype(float)
+
+    # Step 5: Apply Gaussian filter to smooth the binary noise
+    b = gaussian_filter(b, sigma_b)
+
+    # Step 6: Scaling and clipping for realistic intensity adjustment
+    u_0 = np.random.uniform(0.5, 0.55)
+    threshold_mask = b > 0.12
+    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
+    Bj = np.clip(beta * b, 0, 1)
+
+    # Step 7: Local texture enhancement (using wavelet)
+    # Apply wavelet transform to add finer texture details in different frequency bands
+    coeffs = pywt.wavedec2(Bj, wavelet='db4', level=2)
+    coeffs[1] = tuple(0.4 * v for v in coeffs[1])  # Retain some high-frequency details
+    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]  # Discard very high frequency noise
+    Bj_wavelet = pywt.waverec2(coeffs, wavelet='db4')
+
+    # Normalize back to 0-1 range
+    Bj_wavelet = (Bj_wavelet - np.min(Bj_wavelet)) / (np.max(Bj_wavelet) - np.min(Bj_wavelet))
+
+    # Step 8: Optional contrast enhancement (adaptive)
+    contrast_adjusted_Bj = np.clip(Bj_wavelet * np.random.uniform(1.1, 1.3), 0, 1)
+
+    return contrast_adjusted_Bj
+
+
 # here we want to get predefined texutre:
-def get_predefined_texture_a2f(mask_shape, sigma_a, sigma_b):
+def get_predefined_texture_B(mask_shape, sigma_a, sigma_b):
     # Step 1: Uniform noise generate
     a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
     # a = generate_simplex_noise(mask_shape, 0.5)
@@ -147,6 +181,67 @@ def get_predefined_texture_a2f(mask_shape, sigma_a, sigma_b):
     threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
     beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
     Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
+
+    return Bj
+
+def get_optimized_texture_C(mask_shape, sigma_a, sigma_b):
+    def generate_complex_noise(mask_shape, scale=10):
+        a = np.zeros(mask_shape)
+        for i in range(mask_shape[0]):
+            for j in range(mask_shape[1]):
+                for k in range(mask_shape[2]):
+                    a[i, j, k] = snoise3(i / scale, j / scale, k / scale)
+
+        # Normalize to 0-1 range
+        a = (a - np.min(a)) / (np.max(a) - np.min(a))
+        return a
+
+    def enhance_contrast(image):
+        # Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
+        enhanced_image = exposure.equalize_adapthist(image, clip_limit=0.03)
+        return enhanced_image
+
+    def apply_gabor_filter(image):
+        # Apply Gabor filter with different frequencies and angles
+        filtered_real, filtered_imag = gabor(image, frequency=0.6)
+
+        # Combine the real and imaginary parts to get the final filtered image
+        gabor_filtered = np.sqrt(filtered_real ** 2 + filtered_imag ** 2)
+
+        return gabor_filtered
+
+    # Step 1: Complex noise generation (e.g., Simplex noise)
+    a = generate_complex_noise(mask_shape)
+
+    # Step 2: Nonlinear diffusion filtering with adaptive contrast enhancement
+    a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
+    a_enhanced = enhance_contrast(a_denoised)
+
+    # Step 3: Multi-level wavelet transform with high-frequency detail preservation
+    coeffs = pywt.wavedec2(a_enhanced, wavelet='db4', level=3)
+    coeffs[1] = tuple(0.5 * v for v in coeffs[1])  # Retain more high-frequency details
+    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]
+    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='db4')
+
+    # Step 4: Apply Gabor filtering or directional filtering for anisotropy
+    a_gabor = apply_gabor_filter(a_wavelet_denoised)
+
+    # Normalize to 0-1
+    a_normalized = (a_gabor - np.min(a_gabor)) / (np.max(a_gabor) - np.min(a_gabor))
+
+    # Step 5: Gaussian filter
+    a_2 = gaussian_filter(a_normalized, sigma=sigma_a)
+
+    # Introduce more randomness and anisotropy
+    random_sample = np.random.uniform(0, 1, size=mask_shape)
+    b = (a_2 > random_sample).astype(float)
+    b = gaussian_filter(b, sigma_b)
+
+    # Scaling and clipping
+    u_0 = np.random.uniform(0.5, 0.55)
+    threshold_mask = b > 0.12
+    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
+    Bj = np.clip(beta * b, 0, 1)
 
     return Bj
 
