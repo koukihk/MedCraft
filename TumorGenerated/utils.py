@@ -313,11 +313,12 @@ def is_edge_point(mask_scan, potential_point, edge_op="volume", neighborhood_siz
         return check_volume()
     elif edge_op == "sobel":
         return check_sobel()
+    elif edge_op == "any":
+        return check_volume() and check_sobel()
     elif edge_op == "both":
-        # 同时进行体积和Sobel检测，并要求两者都满足才认为是边缘点
         return check_volume() or check_sobel()
     else:
-        raise ValueError("Invalid edge_op option. Choose from 'volume', 'sobel', or 'both'.")
+        raise ValueError("Invalid edge_op option. Choose from 'volume', 'sobel', 'any' or 'both'.")
 
 
 def get_sphere(r):
