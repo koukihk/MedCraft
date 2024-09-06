@@ -6,8 +6,8 @@ from monai.config import KeysCollection
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
-from .utils import (SynthesisTumor,
-                    get_predefined_texture_A, get_predefined_texture_B, get_optimized_texture_C, get_predefined_texture)
+from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_O,
+                    get_predefined_texture_A, get_predefined_texture_B, get_predefined_texture_C,)
 
 Organ_List = {'liver': [1, 2], 'pancreas': [1, 2], 'kidney': [1, 2]}
 Organ_HU = {'liver': [100, 160], 'pancreas': [100, 160], 'kidney': [140, 200]}
@@ -52,7 +52,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         predefined_texture_shape = (420, 300, 320)
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture_O(predefined_texture_shape, sigma_a, sigma_b)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
 

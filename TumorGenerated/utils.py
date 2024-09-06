@@ -12,6 +12,33 @@ from skimage import exposure
 from skimage.filters import gabor
 
 
+def generate_complex_noise(mask_shape, scale=10):
+    a = np.zeros(mask_shape)
+    for i in range(mask_shape[0]):
+        for j in range(mask_shape[1]):
+            for k in range(mask_shape[2]):
+                a[i, j, k] = snoise3(i / scale, j / scale, k / scale)
+
+    # Normalize to 0-1 range
+    a = (a - np.min(a)) / (np.max(a) - np.min(a))
+    return a
+
+
+def enhance_contrast(image):
+    # Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
+    enhanced_image = exposure.equalize_adapthist(image, clip_limit=0.03)
+    return enhanced_image
+
+
+def apply_gabor_filter(image):
+    # Apply Gabor filter with different frequencies and angles
+    filtered_real, filtered_imag = gabor(image, frequency=0.6)
+
+    # Combine the real and imaginary parts to get the final filtered image
+    gabor_filtered = np.sqrt(filtered_real ** 2 + filtered_imag ** 2)
+
+    return gabor_filtered
+
 def add_salt_and_pepper_noise(image, salt_prob, pepper_prob, median_filter_size=3):
     noisy_image = np.copy(image.astype(float))
 
@@ -102,6 +129,25 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
 
     return Bj
 
+def get_predefined_texture_O(mask_shape, sigma_a, sigma_b):
+    a = generate_complex_noise(mask_shape)
+    a_2 = gaussian_filter(a, sigma=sigma_a)
+    scale = np.random.uniform(0.19, 0.21)
+    base = np.random.uniform(0.04, 0.06)
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+
+    # sample once
+    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
+    b = gaussian_filter(b, sigma_b)
+
+    # Scaling and clipping
+    u_0 = np.random.uniform(0.5, 0.55)
+    threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
+    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
+    Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
+
+    return Bj
 
 def get_predefined_texture_A(mask_shape, sigma_a, sigma_b):
     # Step 1: Uniform noise generation with larger range for higher contrast
@@ -184,32 +230,7 @@ def get_predefined_texture_B(mask_shape, sigma_a, sigma_b):
 
     return Bj
 
-def get_optimized_texture_C(mask_shape, sigma_a, sigma_b):
-    def generate_complex_noise(mask_shape, scale=10):
-        a = np.zeros(mask_shape)
-        for i in range(mask_shape[0]):
-            for j in range(mask_shape[1]):
-                for k in range(mask_shape[2]):
-                    a[i, j, k] = snoise3(i / scale, j / scale, k / scale)
-
-        # Normalize to 0-1 range
-        a = (a - np.min(a)) / (np.max(a) - np.min(a))
-        return a
-
-    def enhance_contrast(image):
-        # Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
-        enhanced_image = exposure.equalize_adapthist(image, clip_limit=0.03)
-        return enhanced_image
-
-    def apply_gabor_filter(image):
-        # Apply Gabor filter with different frequencies and angles
-        filtered_real, filtered_imag = gabor(image, frequency=0.6)
-
-        # Combine the real and imaginary parts to get the final filtered image
-        gabor_filtered = np.sqrt(filtered_real ** 2 + filtered_imag ** 2)
-
-        return gabor_filtered
-
+def get_predefined_texture_C(mask_shape, sigma_a, sigma_b):
     # Step 1: Complex noise generation (e.g., Simplex noise)
     a = generate_complex_noise(mask_shape)
 
