@@ -411,6 +411,7 @@ def main_worker(gpu, args):
         # center = [165, 140, 80]
         # axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
         # radii = [210, 170, 80]
+        # radii = [215, 165, 80]
         # ellipsoid_model.set_precomputed_parameters(best_center, best_axes, best_radii)
         ellipsoid_model = EllipsoidFitter.from_precomputed_parameters(center, axes, radii)
         model_name = 'ellipsoid'
