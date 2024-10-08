@@ -410,7 +410,7 @@ def run_training(model,
                 torch.distributed.barrier()  # sync processes
 
             epoch_time = time.time()
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             val_loss, val_acc = val_epoch(model, val_loader, val_shape_dict, epoch=epoch, loss_func=loss_func,
                                           model_inferer=model_inferer, args=args, post_label=post_label,
                                           post_pred=post_pred)

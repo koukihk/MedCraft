@@ -38,7 +38,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
         self.organ_standard_val = 0  # organ standard value
         self.hu_processor = False
-        self.edge_advanced_blur = False
+        self.edge_advanced_blur = True
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
@@ -52,7 +52,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         predefined_texture_shape = (420, 300, 320)
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture_O(predefined_texture_shape, sigma_a, sigma_b)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
 

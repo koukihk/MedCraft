@@ -130,7 +130,7 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     return Bj
 
 def get_predefined_texture_O(mask_shape, sigma_a, sigma_b):
-    simplex_scale = int(np.random.uniform(7, 11))
+    simplex_scale = int(np.random.uniform(2, 6))
     a = generate_complex_noise(mask_shape, simplex_scale)
     a_2 = gaussian_filter(a, sigma=sigma_a)
     scale = np.random.uniform(0.19, 0.21)
@@ -345,7 +345,7 @@ def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
     return potential_point
 
 
-def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="any"):
+def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="both"):
     def is_within_middle_z_range(point, z_start, z_end):
         z_length = z_end - z_start
         lower_bound = z_start + 0.3 * z_length
@@ -434,8 +434,10 @@ def is_edge_point(mask_scan, potential_point, edge_op="both", neighborhood_size=
         return check_volume() and check_sobel()
     elif edge_op == "both":
         return check_volume() or check_sobel()
+    elif edge_op == "none":
+        return False
     else:
-        raise ValueError("Invalid edge_op option. Choose from 'volume', 'sobel', 'any' or 'both'.")
+        raise ValueError("Invalid edge_op option. Choose from 'volume', 'sobel', 'any', 'both' or 'none'.")
 
 
 def get_sphere(r):
