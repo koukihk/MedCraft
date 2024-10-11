@@ -233,7 +233,47 @@ def get_predefined_texture_B(mask_shape, sigma_a, sigma_b):
 
 def get_predefined_texture_C(mask_shape, sigma_a, sigma_b):
     # Step 1: Complex noise generation (e.g., Simplex noise)
-    a = generate_complex_noise(mask_shape)
+    simplex_scale = int(np.random.uniform(2, 6))
+    a = generate_complex_noise(mask_shape, simplex_scale)
+
+    # Step 2: Nonlinear diffusion filtering
+    a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
+
+    # Step 3: Wavelet transform
+    coeffs = pywt.wavedec2(a_denoised, wavelet='db4', level=2)
+    coeffs[1] = tuple(0.3 * v for v in coeffs[1])  # 保留一些高频细节
+    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]
+    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='db4')
+
+    # Normalize to 0-1
+    a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (
+            np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
+
+    # Step 4: Gaussian filter
+    # a_2 = gaussian_filter(a, sigma=sigma_a)
+    a_2 = gaussian_filter(a_wavelet_denoised, sigma=sigma_a)
+
+    scale = np.random.uniform(0.19, 0.21)
+    base = np.random.uniform(0.04, 0.06)
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+
+    # sample once
+    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
+    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
+    b = gaussian_filter(b, sigma_b)
+
+    # Scaling and clipping
+    u_0 = np.random.uniform(0.5, 0.55)
+    threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
+    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
+    Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
+
+    return Bj
+
+def get_predefined_texture_D(mask_shape, sigma_a, sigma_b):
+    # Step 1: Complex noise generation (e.g., Simplex noise)
+    simplex_scale = int(np.random.uniform(2, 6))
+    a = generate_complex_noise(mask_shape, simplex_scale)
 
     # Step 2: Nonlinear diffusion filtering with adaptive contrast enhancement
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
@@ -266,7 +306,6 @@ def get_predefined_texture_C(mask_shape, sigma_a, sigma_b):
     Bj = np.clip(beta * b, 0, 1)
 
     return Bj
-
 
 # Step 1: Random select (numbers) location for tumor.
 def random_select(mask_scan):
