@@ -130,7 +130,7 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     return Bj
 
 def get_predefined_texture_O(mask_shape, sigma_a, sigma_b):
-    simplex_scale = int(np.random.uniform(2, 6))
+    simplex_scale = int(np.random.uniform(3, 7))
     a = generate_complex_noise(mask_shape, simplex_scale)
     a_2 = gaussian_filter(a, sigma=sigma_a)
     scale = np.random.uniform(0.19, 0.21)
