@@ -1,78 +1,84 @@
+import torch
 import numpy as np
 
 
-def calculate_proportion(segmentation_result, tumor_mask):
-    """
-    Calculate the proportion of satisfactory synthesized tumor regions
+class SyntheticTumorFilter:
+    def __init__(self, segmentor, threshold=0.5):
+        """Initialize the synthetic tumor filter
+
+        Args:
+            segmentor: Trained segmentation model
+            threshold: Quality threshold T (default: 0.5)
+        """
+        self.segmentor = segmentor
+        self.threshold = threshold
+        self.segmentor.eval()  # Set model to evaluation mode
+
+    def calculate_proportion(self, synthetic_image, tumor_mask):
+        """Calculate the proportion P between synthetic tumor and mask
+
+        Args:
+            synthetic_image: Synthesized image tensor (C, H, W, D)
+            tumor_mask: Tumor mask tensor (H, W, D)
+        Returns:
+            float: Proportion P
+        """
+        # Ensure input is on GPU and has correct dimensions
+        if not torch.is_tensor(synthetic_image):
+            synthetic_image = torch.from_numpy(synthetic_image)
+        if not torch.is_tensor(tumor_mask):
+            tumor_mask = torch.from_numpy(tumor_mask)
+
+        if len(synthetic_image.shape) == 3:
+            synthetic_image = synthetic_image.unsqueeze(0)
+
+        with torch.no_grad():
+            pred = self.segmentor(synthetic_image.unsqueeze(0).cuda())
+            pred = torch.argmax(pred, dim=1).squeeze().cpu().numpy()
+
+        pred_tumor = (pred == 2).astype(np.int32)
+        tumor_mask = (tumor_mask == 1).astype(np.int32)
+
+        numerator = np.sum(pred_tumor * tumor_mask)
+        denominator = np.sum(tumor_mask)
+
+        if denominator == 0:
+            return 0.0
+
+        proportion = numerator / denominator
+        return proportion
+
+    def filter(self, synthetic_image, tumor_mask):
+        """Check if synthetic tumor passes the quality test
+
+        Args:
+            synthetic_image: Synthesized image tensor
+            tumor_mask: Tumor mask tensor
+        Returns:
+            bool: Whether passes the quality test
+        """
+        proportion = self.calculate_proportion(synthetic_image, tumor_mask)
+        return proportion >= self.threshold
+
+    def batch_filter(self, synthetic_images, tumor_masks):
+        """Filter a batch of synthetic tumors
+
+        Args:
+            synthetic_images: Batch of synthesized images
+            tumor_masks: Batch of tumor masks
+        Returns:
+            list: List of boolean values indicating which images passed the test
+        """
+        return [self.filter(img, mask) for img, mask in zip(synthetic_images, tumor_masks)]
+
+
+def create_filter(segmentor, threshold=0.5):
+    """Factory function to create a tumor filter
 
     Args:
-        segmentation_result: Binary numpy array from segmentor output
-        tumor_mask: Binary numpy array of ground truth tumor mask
-
-    Returns:
-        float: Proportion P as defined in equation (4)
-    """
-    # Convert inputs to binary arrays if they aren't already
-    seg_binary = segmentation_result > 0
-    mask_binary = tumor_mask > 0
-
-    # Calculate numerator (intersection of segmented tumor and mask)
-    numerator = np.sum(np.logical_and(seg_binary, mask_binary))
-
-    # Calculate denominator (total number of tumor mask voxels)
-    denominator = np.sum(mask_binary)
-
-    # Avoid division by zero
-    if denominator == 0:
-        return 0.0
-
-    return numerator / denominator
-
-
-def quality_filter(synthetic_image, tumor_mask, segmentor, threshold=0.5):
-    """
-    Filter synthetic tumors based on segmentation quality
-
-    Args:
-        synthetic_image: The synthesized image with tumor
-        tumor_mask: Binary mask showing tumor locations
-        segmentor: Function that performs tumor segmentation
+        segmentor: Trained segmentation model
         threshold: Quality threshold T
-
     Returns:
-        tuple: (original_image, bool) where bool indicates if image passed quality test
+        SyntheticTumorFilter: Configured filter instance
     """
-    # Get segmentation result from segmentor
-    segmentation_result = segmentor(synthetic_image)
-
-    # Calculate proportion P
-    proportion = calculate_proportion(segmentation_result, tumor_mask)
-
-    # Apply filtering strategy as defined in equation (5)
-    passed_quality_test = proportion >= threshold
-
-    return synthetic_image, passed_quality_test
-
-
-# Example usage with dummy segmentor
-def dummy_segmentor(image):
-    """Dummy segmentor for demonstration"""
-    return np.random.binomial(1, 0.5, size=image.shape)
-
-
-# Example
-if __name__ == "__main__":
-    # Create dummy data
-    image_shape = (64, 64, 64)
-    synthetic_image = np.random.random(image_shape)
-    tumor_mask = np.zeros(image_shape)
-    tumor_mask[20:40, 20:40, 20:40] = 1  # Simulated tumor region
-
-    # Apply filter
-    filtered_image, passed = quality_filter(
-        synthetic_image,
-        tumor_mask,
-        dummy_segmentor
-    )
-
-    print(f"Image passed quality test: {passed}")
+    return SyntheticTumorFilter(segmentor, threshold)
