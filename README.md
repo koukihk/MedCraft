@@ -6,7 +6,6 @@ This repository provides extensive examples of synthetic liver tumors generated 
 root
 │  main.py
 │  monai_trainer.py // Training script using MONAI framework
-│  filter.py
 │  transfer_label.py
 │  tumor_analyzer.py // Analyzes tumor data
 │  tumor_saver.py  // Saves tumor data
@@ -28,6 +27,7 @@ root
 └─TumorGenerated
         TumorGenerated.py
         utils.py // Utility functions for tumor generation
+        filter.py
         __init__.py
 ```
 
