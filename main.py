@@ -2,6 +2,8 @@ import random
 import string
 import time
 import warnings
+import os
+
 from functools import partial
 from os import environ
 
@@ -248,7 +250,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, segmentor=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -267,7 +269,8 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name),  # here we use online
+                               ellipsoid_model=ellipsoid_model, model_name=model_name, segmentor=segmentor,
+                               filter_threshold=0.5),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -420,6 +423,50 @@ def main_worker(gpu, args):
         duration = end_time - start_time
         print("Ellipsoid fixing execution time: {:.2f} s".format(duration))
 
+    segmentor = None
+    if args.filter:
+        if args.model_name == 'swin_unetrv2':
+            if args.swin_type == 'tiny':
+                feature_size = 12
+            elif args.swin_type == 'small':
+                feature_size = 24
+            elif args.swin_type == 'base':
+                feature_size = 48
+
+            model = SwinUNETR_v2(in_channels=1,
+                                 out_channels=3,
+                                 img_size=(96, 96, 96),
+                                 feature_size=feature_size,
+                                 patch_size=2,
+                                 depths=[2, 2, 2, 2],
+                                 num_heads=[3, 6, 12, 24],
+                                 window_size=[7, 7, 7])
+
+        elif args.model_name == 'unet':
+            from monai.networks.nets import UNet
+            model = UNet(
+                spatial_dims=3,
+                in_channels=1,
+                out_channels=3,
+                channels=(16, 32, 64, 128, 256),
+                strides=(2, 2, 2, 2),
+                num_res_units=2,
+            )
+
+        else:
+            raise ValueError('Unsupported model ' + str(args.model))
+
+        checkpoint = torch.load(os.path.join(args.log_dir, 'model.pt'), map_location='cpu')
+
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in checkpoint['state_dict'].items():
+            new_state_dict[k.replace('backbone.', '')] = v
+        # load params
+        model.load_state_dict(new_state_dict, strict=False)
+        segmentor = model.cuda()
+
+
     if args.distributed:
         # in new Pytorch/python labda functions fail to pickle with spawn
         torch.multiprocessing.set_start_method('fork', force=True)
@@ -453,7 +500,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, segmentor)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':

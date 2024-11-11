@@ -9,7 +9,7 @@ from monai.transforms.transform import MapTransform, RandomizableTransform
 
 from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_O,
                     get_predefined_texture_A, get_predefined_texture_B, get_predefined_texture_C,)
-from .filter import SyntheticTumorFilter  # 假设过滤器代码位于 filter.py 文件中
+from .filter import SyntheticTumorFilter
 
 Organ_List = {'liver': [1, 2], 'pancreas': [1, 2], 'kidney': [1, 2]}
 Organ_HU = {'liver': [100, 160], 'pancreas': [100, 160], 'kidney': [140, 200]}
