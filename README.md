@@ -6,6 +6,7 @@ This repository provides extensive examples of synthetic liver tumors generated 
 root
 │  main.py
 │  monai_trainer.py // Training script using MONAI framework
+│  filter.py
 │  transfer_label.py
 │  tumor_analyzer.py // Analyzes tumor data
 │  tumor_saver.py  // Saves tumor data
@@ -165,6 +166,7 @@ python -W ignore validation.py --model=unet --val_overlap=0.75 --val_dir $val_pa
 ```
 
 ## Related Papers
+**FreeTumor: Advance Tumor Segmentation via Large-Scale Tumor Synthesis** *Linshan Wu, Jiaxin Zhuang, Xuefeng Ni, Hao Chen* arXiv | 3 Jun 2024 [paper](https://arxiv.org/pdf/2406.01264)
 
 **From Pixel to Cancer: Cellular Automata in Computed Tomography** *Yuxiang Lai, Xiaoxi Chen, Angtian Wang, Alan Yuille, Zongwei Zhou* MICCAI | 13 May 2024 [paper](https://www.cs.jhu.edu/~alanlab/Pubs24/lai2024pixel.pdf)
 

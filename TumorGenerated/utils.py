@@ -130,7 +130,7 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
     return Bj
 
 def get_predefined_texture_O(mask_shape, sigma_a, sigma_b):
-    simplex_scale = int(np.random.uniform(1, 8))
+    simplex_scale = int(np.random.uniform(4, 8))
     a = generate_complex_noise(mask_shape, simplex_scale)
     a_2 = gaussian_filter(a, sigma=sigma_a)
     scale = np.random.uniform(0.19, 0.21)
@@ -233,7 +233,7 @@ def get_predefined_texture_B(mask_shape, sigma_a, sigma_b):
 
 def get_predefined_texture_C(mask_shape, sigma_a, sigma_b):
     # Step 1: Complex noise generation (e.g., Simplex noise)
-    simplex_scale = int(np.random.uniform(3, 7))
+    simplex_scale = int(np.random.uniform(4, 8))
     a = generate_complex_noise(mask_shape, simplex_scale)
 
     # Step 2: Nonlinear diffusion filtering
