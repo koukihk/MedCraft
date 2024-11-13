@@ -39,6 +39,7 @@ parser.add_argument('--syn', action='store_true')  # use synthetic tumors for tr
 parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
 parser.add_argument('--gen_folder_name', default='default', type=str)
 parser.add_argument('--filter', action='store_true')
+parser.add_argument('--fil_dir', default='runs/standard.unet', type=str)
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_cv', action='store_true')
@@ -270,7 +271,7 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, seg
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
                                ellipsoid_model=ellipsoid_model, model_name=model_name, segmentor=segmentor,
-                               filter_threshold=0.5),  # here we use online
+                               filter_threshold=0.5, filter_enabled=args.filter),  # here we use online
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -456,7 +457,7 @@ def main_worker(gpu, args):
         else:
             raise ValueError('Unsupported model ' + str(args.model))
 
-        checkpoint = torch.load(os.path.join(args.log_dir, 'model.pt'), map_location='cpu')
+        checkpoint = torch.load(os.path.join(args.fil_dir, 'model.pt'), map_location='cpu')
 
         from collections import OrderedDict
         new_state_dict = OrderedDict()
