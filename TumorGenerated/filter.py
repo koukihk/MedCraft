@@ -10,7 +10,7 @@ class SyntheticTumorFilter:
             segmentor: Trained segmentation model
             threshold: Quality threshold T (default: 0.5)
         """
-        self.segmentor = segmentor
+        self.segmentor = segmentor.cpu()  # 将模型放在CPU
         self.threshold = threshold
         self.segmentor.eval()  # Set model to evaluation mode
 
@@ -23,21 +23,55 @@ class SyntheticTumorFilter:
         Returns:
             float: Proportion P
         """
-        # Ensure input is on GPU and has correct dimensions
         if not torch.is_tensor(synthetic_image):
             synthetic_image = torch.from_numpy(synthetic_image)
         if not torch.is_tensor(tumor_mask):
             tumor_mask = torch.from_numpy(tumor_mask)
 
-        if len(synthetic_image.shape) == 3:
-            synthetic_image = synthetic_image.unsqueeze(0)
+        # 确保数据类型为float
+        synthetic_image = synthetic_image.float()
+
+        # 标准化输入维度
+        if len(synthetic_image.shape) == 3:  # (H, W, D)
+            synthetic_image = synthetic_image.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W, D)
+        elif len(synthetic_image.shape) == 4:  # (C, H, W, D)
+            synthetic_image = synthetic_image.unsqueeze(0)  # (1, C, H, W, D)
+
+        # 添加调试信息
+        print("Input shape to segmentor:", synthetic_image.shape)
 
         with torch.no_grad():
-            pred = self.segmentor(synthetic_image.unsqueeze(0).cuda())
-            pred = torch.argmax(pred, dim=1).squeeze().cpu().numpy()
+            try:
+                # 确保输入大小是模型期望的大小
+                expected_size = (256, 256, 256)  # 替换为你的模型期望的输入大小
+                if synthetic_image.shape[2:] != expected_size:
+                    synthetic_image = torch.nn.functional.interpolate(
+                        synthetic_image,
+                        size=expected_size,
+                        mode='trilinear',
+                        align_corners=False
+                    )
+
+                pred = self.segmentor(synthetic_image)
+                pred = torch.argmax(pred, dim=1).squeeze().cpu().numpy()
+
+            except Exception as e:
+                print(f"Error during segmentation: {e}")
+                print(f"Input tensor shape: {synthetic_image.shape}")
+                raise
 
         pred_tumor = (pred == 2).astype(np.int32)
         tumor_mask = (tumor_mask == 1).astype(np.int32)
+
+        # 确保 pred_tumor 和 tumor_mask 具有相同的形状
+        if pred_tumor.shape != tumor_mask.shape:
+            print(f"Shape mismatch - pred_tumor: {pred_tumor.shape}, tumor_mask: {tumor_mask.shape}")
+            # 将预测调整为与mask相同的大小
+            tumor_mask = torch.nn.functional.interpolate(
+                torch.from_numpy(tumor_mask).float().unsqueeze(0).unsqueeze(0),
+                size=pred_tumor.shape,
+                mode='nearest'
+            ).squeeze().numpy()
 
         numerator = np.sum(pred_tumor * tumor_mask)
         denominator = np.sum(tumor_mask)

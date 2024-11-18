@@ -70,26 +70,29 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.randomize(None)
 
         if self._do_transform and (np.max(d['label']) <= 1):
+            # 打印输入形状
+            print(f"Original image shape: {d['image'].shape}")
+            print(f"Original label shape: {d['label'].shape}")
+
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
 
-            # 生成肿瘤
-            synthesized_image, synthesized_label = SynthesisTumor(
-                d['image'][0], d['label'][0], tumor_type, texture,
-                self.hu_processor, self.organ_standard_val,
-                self.organ_hu_lowerbound, self.outrange_standard_val,
-                self.edge_advanced_blur, self.gmm_list,
-                self.ellipsoid_model, self.model_name
-            )
+            synthesized_image, synthesized_label = SynthesisTumor(...)
 
-            # 如果启用了过滤器，则进行质量检测
+            # 打印合成后的形状
+            print(f"Synthesized image shape: {synthesized_image.shape}")
+            print(f"Synthesized label shape: {synthesized_label.shape}")
+
             if self.filter_enabled and self.tumor_filter is not None:
-                passed_quality_check = self.tumor_filter.filter(synthesized_image, synthesized_label)
-                if passed_quality_check:
-                    d['image'][0], d['label'][0] = synthesized_image, synthesized_label
-                else:
-                    print("Generated tumor did not pass quality check, reverting to original sample.")
-            else:
-                d['image'][0], d['label'][0] = synthesized_image, synthesized_label
+                try:
+                    passed_quality_check = self.tumor_filter.filter(synthesized_image, synthesized_label)
+                    if passed_quality_check:
+                        d['image'][0], d['label'][0] = synthesized_image, synthesized_label
+                    else:
+                        print("Generated tumor did not pass quality check")
+                except Exception as e:
+                    print(f"Error during filtering: {e}")
+                    # 可以选择继续使用原始图像
+                    print("Using original image due to filter error")
 
         return d
