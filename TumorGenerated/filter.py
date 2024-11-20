@@ -1,118 +1,67 @@
 import torch
-import numpy as np
+import torch.nn.functional as F
 
 
 class SyntheticTumorFilter:
-    def __init__(self, segmentor, threshold=0.5):
-        """Initialize the synthetic tumor filter
-
-        Args:
-            segmentor: Trained segmentation model
-            threshold: Quality threshold T (default: 0.5)
+    def __init__(self, model, inferer, threshold=0.5):
         """
-        self.segmentor = segmentor.cpu()  # 将模型放在CPU
+        Args:
+            model: 预训练的3D分割模型
+            inferer: sliding window inference函数，用于大体积3D数据的推理
+            threshold: 质量评估阈值
+        """
+        self.model = model
+        self.inferer = inferer
         self.threshold = threshold
-        self.segmentor.eval()  # Set model to evaluation mode
 
-    def calculate_proportion(self, synthetic_image, tumor_mask):
-        """Calculate the proportion P between synthetic tumor and mask
-
-        Args:
-            synthetic_image: Synthesized image tensor (C, H, W, D)
-            tumor_mask: Tumor mask tensor (H, W, D)
-        Returns:
-            float: Proportion P
+    @torch.no_grad()
+    def calculate_quality_score(self, image, mask):
         """
-        if not torch.is_tensor(synthetic_image):
-            synthetic_image = torch.from_numpy(synthetic_image)
-        if not torch.is_tensor(tumor_mask):
-            tumor_mask = torch.from_numpy(tumor_mask)
-
-        # 确保数据类型为float
-        synthetic_image = synthetic_image.float()
-
+        计算3D合成肿瘤的质量分数
+        Args:
+            image: 3D图像 shape: [C,D,H,W] 或 [D,H,W]
+            mask: 3D肿瘤掩码 shape: [C,D,H,W] 或 [D,H,W]
+        Returns:
+            quality_score: 质量分数
+        """
         # 标准化输入维度
-        if len(synthetic_image.shape) == 3:  # (H, W, D)
-            synthetic_image = synthetic_image.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W, D)
-        elif len(synthetic_image.shape) == 4:  # (C, H, W, D)
-            synthetic_image = synthetic_image.unsqueeze(0)  # (1, C, H, W, D)
+        if image.ndim == 3:  # [D,H,W]
+            image = image.unsqueeze(0).unsqueeze(0)  # [1,1,D,H,W]
+        elif image.ndim == 4:  # [C,D,H,W]
+            image = image.unsqueeze(0)  # [1,C,D,H,W]
 
-        # 添加调试信息
-        print("Input shape to segmentor:", synthetic_image.shape)
+        if mask.ndim == 3:  # [D,H,W]
+            mask = mask.unsqueeze(0)  # [1,D,H,W]
 
-        with torch.no_grad():
-            try:
-                # 确保输入大小是模型期望的大小
-                expected_size = (256, 256, 256)  # 替换为你的模型期望的输入大小
-                if synthetic_image.shape[2:] != expected_size:
-                    synthetic_image = torch.nn.functional.interpolate(
-                        synthetic_image,
-                        size=expected_size,
-                        mode='trilinear',
-                        align_corners=False
-                    )
+        # 确保数据类型正确
+        image = image.float().cuda()
+        mask = mask.float().cuda()
 
-                pred = self.segmentor(synthetic_image)
-                pred = torch.argmax(pred, dim=1).squeeze().cpu().numpy()
+        # 使用sliding window inference进行3D分割预测
+        # pred shape: [B,C,D,H,W]
+        pred = self.inferer(image)
+        pred = F.softmax(pred, dim=1)
+        pred = (pred.argmax(dim=1) > 0).float()  # [B,D,H,W]
 
-            except Exception as e:
-                print(f"Error during segmentation: {e}")
-                print(f"Input tensor shape: {synthetic_image.shape}")
-                raise
+        # 计算重叠比例
+        tumor_mask = (mask > 0)
+        intersection = torch.sum(pred * tumor_mask)
+        total_tumor_voxels = torch.sum(tumor_mask)
 
-        pred_tumor = (pred == 2).astype(np.int32)
-        tumor_mask = (tumor_mask == 1).astype(np.int32)
-
-        # 确保 pred_tumor 和 tumor_mask 具有相同的形状
-        if pred_tumor.shape != tumor_mask.shape:
-            print(f"Shape mismatch - pred_tumor: {pred_tumor.shape}, tumor_mask: {tumor_mask.shape}")
-            # 将预测调整为与mask相同的大小
-            tumor_mask = torch.nn.functional.interpolate(
-                torch.from_numpy(tumor_mask).float().unsqueeze(0).unsqueeze(0),
-                size=pred_tumor.shape,
-                mode='nearest'
-            ).squeeze().numpy()
-
-        numerator = np.sum(pred_tumor * tumor_mask)
-        denominator = np.sum(tumor_mask)
-
-        if denominator == 0:
+        if total_tumor_voxels == 0:
             return 0.0
 
-        proportion = numerator / denominator
-        return proportion
+        quality_score = (intersection / total_tumor_voxels).cpu().item()
+        return quality_score
 
-    def filter(self, synthetic_image, tumor_mask):
-        """Check if synthetic tumor passes the quality test
-
-        Args:
-            synthetic_image: Synthesized image tensor
-            tumor_mask: Tumor mask tensor
-        Returns:
-            bool: Whether passes the quality test
+    def __call__(self, image, mask):
         """
-        proportion = self.calculate_proportion(synthetic_image, tumor_mask)
-        return proportion >= self.threshold
-
-    def batch_filter(self, synthetic_images, tumor_masks):
-        """Filter a batch of synthetic tumors
-
+        执行3D肿瘤质量过滤
         Args:
-            synthetic_images: Batch of synthesized images
-            tumor_masks: Batch of tumor masks
+            image: 3D图像
+            mask: 3D肿瘤掩码
         Returns:
-            list: List of boolean values indicating which images passed the test
+            passed: 是否通过质量检测
         """
-        return [self.filter(img, mask) for img, mask in zip(synthetic_images, tumor_masks)]
-
-
-def create_filter(segmentor, threshold=0.5):
-    """Factory function to create a tumor filter
-
-    Args:
-        segmentor: Trained segmentation model
-        threshold: Quality threshold T
-    Returns:
-        SyntheticTumorFilter: Configured filter instance
-    """
-    return SyntheticTumorFilter(segmentor, threshold)
+        quality_score = self.calculate_quality_score(image, mask)
+        return quality_score >= self.threshold

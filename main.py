@@ -251,7 +251,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, segmentor=None):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, sample_filter=None, filter_inferer=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -270,8 +270,8 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, seg
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name, segmentor=segmentor,
-                               filter_threshold=0.5, filter_enabled=args.filter),  # here we use online
+                               ellipsoid_model=ellipsoid_model, model_name=model_name, sample_filter=sample_filter,
+                               filter_inferer=filter_inferer, filter_threshold=0.5, filter_enabled=args.filter),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -424,8 +424,10 @@ def main_worker(gpu, args):
         duration = end_time - start_time
         print("Ellipsoid fixing execution time: {:.2f} s".format(duration))
 
-    segmentor = None
+    sample_filter = None
+    filter_inferer = None
     if args.filter:
+        inf_size = [96, 96, 96]
         if args.model_name == 'swin_unetrv2':
             if args.swin_type == 'tiny':
                 feature_size = 12
@@ -465,7 +467,9 @@ def main_worker(gpu, args):
             new_state_dict[k.replace('backbone.', '')] = v
         # load params
         model.load_state_dict(new_state_dict, strict=False)
-        segmentor = model.cuda()
+        sample_filter = model.cuda()
+        filter_inferer = partial(sliding_window_inference, roi_size=inf_size, sw_batch_size=1, predictor=model,
+                                overlap=args.val_overlap, mode='gaussian')
 
 
     if args.distributed:
@@ -501,7 +505,8 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, segmentor)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, sample_filter,
+                                                    filter_inferer)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
