@@ -107,11 +107,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
 
             # 如果启用过滤器，进行3D质量检查
             if self.filter_enabled:
-                # 确保数据是tensor
-                if not isinstance(synthetic_image, torch.Tensor):
-                    synthetic_image = torch.from_numpy(synthetic_image)
-                if not isinstance(synthetic_label, torch.Tensor):
-                    synthetic_label = torch.from_numpy(synthetic_label)
+                synthetic_image = torch.as_tensor(synthetic_image, dtype=torch.float32)  # 确保在CPU上
+                synthetic_label = torch.as_tensor(synthetic_label, dtype=torch.float32)  # 确保在CPU上
 
                 passed = self.tumor_filter(synthetic_image, synthetic_label)
                 if not passed:
