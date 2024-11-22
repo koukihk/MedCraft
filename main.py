@@ -621,7 +621,7 @@ def main_worker(gpu, args):
 
     train_sampler = AMDistributedSampler(train_ds) if args.distributed else None
     train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=4,
-                                   sampler=train_sampler, pin_memory=True)
+                                   sampler=train_sampler, pin_memory=True, multiprocessing_context='spawn')
 
     val_ds = data.Dataset(data=new_val_files, transform=val_transform)
     val_sampler = AMDistributedSampler(val_ds, shuffle=False) if args.distributed else None
@@ -705,4 +705,5 @@ def main_worker(gpu, args):
 
 
 if __name__ == '__main__':
+    mp.set_start_method('spawn', force=True)
     main()

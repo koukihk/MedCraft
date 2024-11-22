@@ -55,7 +55,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         predefined_texture_shape = (420, 300, 320)
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture_O(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture_B(predefined_texture_shape, sigma_a, sigma_b)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
 
@@ -75,14 +75,30 @@ class TumorGenerated(RandomizableTransform, MapTransform):
 
         if self._do_transform and (np.max(d['label']) <= 1):
             # 保存原始3D图像和标签
-            original_image = d['image'].clone()  # [1,D,H,W]
-            original_label = d['label'].clone()  # [1,D,H,W]
+            if isinstance(d['image'], torch.Tensor):
+                original_image = d['image'].clone()
+                original_label = d['label'].clone()
+            else:
+                original_image = d['image'].copy()  # numpy array
+                original_label = d['label'].copy()  # numpy array
+
+            # 确保维度正确
+            if isinstance(original_image, np.ndarray):
+                if original_image.ndim == 3:
+                    original_image = original_image[np.newaxis, ...]  # 添加通道维度
+                if original_label.ndim == 3:
+                    original_label = original_label[np.newaxis, ...]
 
             # 生成3D合成肿瘤
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
+
+            # 获取第一个通道的数据
+            img_data = original_image[0] if original_image.ndim == 4 else original_image
+            label_data = original_label[0] if original_label.ndim == 4 else original_label
+
             synthetic_image, synthetic_label = SynthesisTumor(
-                original_image[0], original_label[0], tumor_type, texture,
+                img_data, label_data, tumor_type, texture,
                 self.hu_processor, self.organ_standard_val,
                 self.organ_hu_lowerbound, self.outrange_standard_val,
                 self.edge_advanced_blur, self.gmm_list,
@@ -91,13 +107,24 @@ class TumorGenerated(RandomizableTransform, MapTransform):
 
             # 如果启用过滤器，进行3D质量检查
             if self.filter_enabled:
+                # 确保数据是tensor
+                if not isinstance(synthetic_image, torch.Tensor):
+                    synthetic_image = torch.from_numpy(synthetic_image)
+                if not isinstance(synthetic_label, torch.Tensor):
+                    synthetic_label = torch.from_numpy(synthetic_label)
+
                 passed = self.tumor_filter(synthetic_image, synthetic_label)
                 if not passed:
                     # 质量检测未通过，使用原始3D图像
-                    synthetic_image = original_image[0]
-                    synthetic_label = original_label[0]
+                    synthetic_image = img_data
+                    synthetic_label = label_data
 
-            d['image'][0] = synthetic_image
-            d['label'][0] = synthetic_label
+            # 更新数据字典
+            if isinstance(d['image'], torch.Tensor):
+                d['image'][0] = torch.as_tensor(synthetic_image)
+                d['label'][0] = torch.as_tensor(synthetic_label)
+            else:
+                d['image'][0] = np.asarray(synthetic_image)
+                d['label'][0] = np.asarray(synthetic_label)
 
         return d
