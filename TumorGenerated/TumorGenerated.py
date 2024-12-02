@@ -24,9 +24,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  gmm_list=[],
                  ellipsoid_model=None,
                  model_name=None,
-                 sample_filter=None,
-                 filter_inferer=None,
-                 filter_threshold: float = 0.5,
+                 tumor_filter=None,
                  filter_enabled: bool = False
                  ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
@@ -61,13 +59,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
 
         # 初始化3D肿瘤过滤器
         self.filter_enabled = filter_enabled
-        if self.filter_enabled:
-            assert sample_filter is not None and filter_inferer is not None
-            self.tumor_filter = SyntheticTumorFilter(
-                model=sample_filter,
-                inferer=filter_inferer,
-                threshold=filter_threshold
-            )
+        if self.filter_enabled and tumor_filter is not None:
+            self.tumor_filter = tumor_filter
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> Dict[Hashable, NdarrayOrTensor]:
         d = dict(data)
@@ -106,9 +99,9 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             )
 
             # 如果启用过滤器，进行3D质量检查
-            if self.filter_enabled:
-                synthetic_image = torch.as_tensor(synthetic_image, dtype=torch.float32)  # 确保在CPU上
-                synthetic_label = torch.as_tensor(synthetic_label, dtype=torch.float32)  # 确保在CPU上
+            if self.filter_enabled and self.tumor_filter is not None:
+                synthetic_image = torch.as_tensor(synthetic_image, dtype=torch.float32, device='cpu')
+                synthetic_label = torch.as_tensor(synthetic_label, dtype=torch.float32, device='cpu')
 
                 passed = self.tumor_filter(synthetic_image, synthetic_label)
                 if not passed:

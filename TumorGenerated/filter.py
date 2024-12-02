@@ -3,16 +3,16 @@ import torch.nn.functional as F
 
 
 class SyntheticTumorFilter:
-    def __init__(self, model, inferer, threshold=0.5):
+    def __init__(self, model, inferer, device, threshold=0.5):
         """
         Args:
             model: 预训练的3D分割模型
             inferer: sliding window inference函数，用于大体积3D数据的推理
             threshold: 质量评估阈值
         """
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = model.to(self.device)
+        self.model = model
         self.inferer = inferer
+        self.device = device
         self.threshold = threshold
 
     @torch.no_grad()
@@ -25,9 +25,6 @@ class SyntheticTumorFilter:
         Returns:
             quality_score: 质量分数
         """
-        # 动态获取设备
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
         # 标准化输入维度
         if image.ndim == 3:  # [D,H,W]
             image = image.unsqueeze(0).unsqueeze(0)  # [1,1,D,H,W]
@@ -38,8 +35,8 @@ class SyntheticTumorFilter:
             mask = mask.unsqueeze(0)  # [1,D,H,W]
 
         # 确保数据类型和设备
-        image = image.to(device, dtype=torch.float32)
-        mask = mask.to(device, dtype=torch.float32)
+        image = image.to(self.device, dtype=torch.float32)
+        mask = mask.to(self.device, dtype=torch.float32)
 
         # 使用 sliding window inference 进行 3D 分割预测
         pred = self.inferer(image)  # [B,C,D,H,W]
