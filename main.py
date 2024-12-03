@@ -252,7 +252,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, tumor_filter=None):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -271,8 +271,7 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, tum
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name, tumor_filter=tumor_filter,
-                               filter_enabled=args.filter),
+                               ellipsoid_model=ellipsoid_model, model_name=model_name),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -379,108 +378,100 @@ def main():
         else:
             main_worker(gpu=0, args=args)
 
-def generate_random_string(length=6):
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+def load_gmm_list(args):
+    gmm_list = []
+    optimal_components = np.array(args.optimal_components.split(',')).astype(int)
+    cov_type = 'tied'
+    analyzer = TumorAnalyzer()
+    # here we use LiTS and you can modify it
+    analyzer.gmm_starter(args.val_dir, optimal_components, cov_type, args.gmm_split, args.gmm_cv, True)
+    if args.gmm_split:
+        gmm_list.append(analyzer.get_gmm_model('tiny'))
+        gmm_list.append(analyzer.get_gmm_model('non_tiny'))
+    else:
+        gmm_list.append(analyzer.get_gmm_model('global'))
+    return gmm_list
+
+def load_ellipsoid_model():
+    center = [166, 143, 80]
+    axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
+    radii = [213, 167, 82]
+    # center = [165, 140, 80]
+    # axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
+    # radii = [210, 170, 80]
+    # radii = [215, 165, 80]
+    ellipsoid_model = EllipsoidFitter.from_precomputed_parameters(center, axes, radii)
+    return ellipsoid_model
+
+def load_filter_model(args, device):
+    inf_size = [96, 96, 96]
+    if args.model_name == 'swin_unetrv2':
+        if args.swin_type == 'tiny':
+            feature_size = 12
+        elif args.swin_type == 'small':
+            feature_size = 24
+        elif args.swin_type == 'base':
+            feature_size = 48
+
+        model = SwinUNETR_v2(in_channels=1,
+                                    out_channels=3,
+                                    img_size=(96, 96, 96),
+                                    feature_size=feature_size,
+                                    patch_size=2,
+                                    depths=[2, 2, 2, 2],
+                                    num_heads=[3, 6, 12, 24],
+                                    window_size=[7, 7, 7])
+    elif args.model_name == 'unet':
+        from monai.networks.nets import UNet
+        model = UNet(
+            spatial_dims=3,
+            in_channels=1,
+            out_channels=3,
+            channels=(16, 32, 64, 128, 256),
+            strides=(2, 2, 2, 2),
+            num_res_units=2,
+        )
+    else:
+        raise ValueError('Unsupported model ' + str(args.model_name))
+
+    checkpoint = torch.load(os.path.join(args.fil_dir, 'model.pt'), map_location='cpu')
+
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in checkpoint['state_dict'].items():
+        new_state_dict[k.replace('backbone.', '')] = v
+    model.load_state_dict(new_state_dict, strict=False)
+    model = model.to(device)
+    model_inferer = partial(
+        sliding_window_inference,
+        roi_size=inf_size,
+        sw_batch_size=1,
+        predictor=model,
+        overlap=0.75,
+        mode='gaussian'
+    )
+    return model_inferer
+
 
 def main_worker(gpu, args):
     model_name = None
 
     gmm_list = []
     if args.gmm:
-        start_time = time.time()
-        optimal_components = np.array(args.optimal_components.split(',')).astype(int)
-        cov_type = 'tied'
-        analyzer = TumorAnalyzer()
-        # here we use LiTS and you can modify it
-        analyzer.gmm_starter(args.val_dir, optimal_components, cov_type, args.gmm_split, args.gmm_cv, True)
-        if args.gmm_split:
-            gmm_list.append(analyzer.get_gmm_model('tiny'))
-            gmm_list.append(analyzer.get_gmm_model('non_tiny'))
-        else:
-            gmm_list.append(analyzer.get_gmm_model('global'))
+        gmm_list = load_gmm_list(args)
         model_name = 'gmm'
-        end_time = time.time()
-        duration = end_time - start_time
-        print("GMM fixing execution time: {:.2f} s".format(duration))
 
     ellipsoid_model = None
     if args.ellipsoid:
-        start_time = time.time()
-        analyzer = TumorAnalyzer()
-        # tumor_data = analyzer.get_all_tumors(args.val_dir, args.val_dir, False, True)
-        # tumor_data = np.array([tumor.position for tumor in tumor_data])
-        # ellipsoid_model = EllipsoidFitter(tumor_data)
-        # Setting precomputed parameters
-        center = [166, 143, 80]
-        axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
-        radii = [213, 167, 82]
-        # center = [165, 140, 80]
-        # axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
-        # radii = [210, 170, 80]
-        # radii = [215, 165, 80]
-        # ellipsoid_model.set_precomputed_parameters(best_center, best_axes, best_radii)
-        ellipsoid_model = EllipsoidFitter.from_precomputed_parameters(center, axes, radii)
+        ellipsoid_model = load_ellipsoid_model()
         model_name = 'ellipsoid'
-        end_time = time.time()
-        duration = end_time - start_time
-        print("Ellipsoid fixing execution time: {:.2f} s".format(duration))
 
     tumor_filter = None
     if args.filter:
-        inf_size = [96, 96, 96]
-        if args.model_name == 'swin_unetrv2':
-            if args.swin_type == 'tiny':
-                feature_size = 12
-            elif args.swin_type == 'small':
-                feature_size = 24
-            elif args.swin_type == 'base':
-                feature_size = 48
-
-            model = SwinUNETR_v2(in_channels=1,
-                                 out_channels=3,
-                                 img_size=(96, 96, 96),
-                                 feature_size=feature_size,
-                                 patch_size=2,
-                                 depths=[2, 2, 2, 2],
-                                 num_heads=[3, 6, 12, 24],
-                                 window_size=[7, 7, 7])
-
-        elif args.model_name == 'unet':
-            from monai.networks.nets import UNet
-            model = UNet(
-                spatial_dims=3,
-                in_channels=1,
-                out_channels=3,
-                channels=(16, 32, 64, 128, 256),
-                strides=(2, 2, 2, 2),
-                num_res_units=2,
-            )
-
-        else:
-            raise ValueError('Unsupported model ' + str(args.model))
-
-        checkpoint = torch.load(os.path.join(args.fil_dir, 'model.pt'), map_location='cpu')
-
-        from collections import OrderedDict
-        new_state_dict = OrderedDict()
-        for k, v in checkpoint['state_dict'].items():
-            new_state_dict[k.replace('backbone.', '')] = v
-        # load params
-        model.load_state_dict(new_state_dict, strict=False)
-        sample_filter = model.cuda()
-        filter_inferer = partial(sliding_window_inference, roi_size=inf_size, sw_batch_size=1, predictor=model,
-                                overlap=args.val_overlap, mode='gaussian')
-        device = torch.device("cuda")
-        tumor_filter = SyntheticTumorFilter(
-            model=sample_filter,
-            inferer=filter_inferer,
-            device=device,
-            threshold=args.fil_threshold
-        )
-
+        tumor_filter = load_filter_model(args, torch.device("cuda"))
 
     if args.distributed:
-        # in new Pytorch/python labda functions fail to pickle with spawn
+        # in new Pytorch/python lambda functions fail to pickle with spawn
         torch.multiprocessing.set_start_method('fork', force=True)
     np.set_printoptions(formatter={'float': '{: 0.3f}'.format}, suppress=True)
 
@@ -512,7 +503,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, tumor_filter)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
@@ -713,5 +704,5 @@ def main_worker(gpu, args):
 
 
 if __name__ == '__main__':
-    mp.set_start_method('spawn', force=True)
+    # mp.set_start_method("spawn", force=True)
     main()
