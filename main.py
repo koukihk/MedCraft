@@ -252,7 +252,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, tumor_filter=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -271,7 +271,8 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name),
+                               ellipsoid_model=ellipsoid_model, model_name=model_name, tumor_filter=tumor_filter,
+                               filter_enabled=args.filter, filter_threshold=args.fil_threshold),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -503,7 +504,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, tumor_filter)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
