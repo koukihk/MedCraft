@@ -23,7 +23,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  gmm_list=[],
                  ellipsoid_model=None,
                  model_name=None,
-                 tumor_filter=None,
+                 filter_model=None,
+                 filter_inferer=None,
                  filter_enabled: bool = False,
                  filter_threshold: float = 0.5
                  ) -> None:
@@ -40,7 +41,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.organ_standard_val = 0  # organ standard value
         self.hu_processor = False
         self.edge_advanced_blur = True
-        self.tumor_filter = tumor_filter
+        self.filter_model = filter_model
+        self.filter_inferer = filter_inferer
         self.filter_enabled = filter_enabled
         self.filter_threshold = filter_threshold
 
@@ -67,37 +69,35 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         if self._do_transform and (np.max(d['label']) <= 1):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
-            # 合成肿瘤
-            synthesized_image, synthesized_label = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
-                                                          self.hu_processor, self.organ_standard_val,
-                                                          self.organ_hu_lowerbound,
-                                                          self.outrange_standard_val, self.edge_advanced_blur,
-                                                          self.gmm_list, self.ellipsoid_model, self.model_name)
 
-            # 如果启用过滤功能，计算合成肿瘤质量
-            if self.filter_enabled and self.tumor_filter:
-                quality_score = self._calculate_quality_score(synthesized_image, synthesized_label)
-                if quality_score < self.filter_threshold:
-                    # 未通过质量测试，放弃合成结果
+            # 合成肿瘤
+            synthesized_image, synthesized_label = SynthesisTumor(
+                d['image'][0], d['label'][0], tumor_type, texture,
+                self.hu_processor, self.organ_standard_val,
+                self.organ_hu_lowerbound, self.outrange_standard_val,
+                self.edge_advanced_blur, self.gmm_list,
+                self.ellipsoid_model, self.model_name
+            )
+
+            if self.filter_enabled and self.filter_model is not None and self.filter_inferer is not None:
+                # 通过过滤器模型进行质量检测
+                filter_logits = self.filter_inferer(synthesized_image.unsqueeze(0).cuda())
+                filter_probs = torch.softmax(filter_logits, dim=1).cpu().numpy()
+                filter_mask = np.argmax(filter_probs, axis=1).astype(np.uint8)
+
+                # 根据过滤器的输出计算满意比例
+                M = synthesized_label == 2  # 真实肿瘤掩码
+                S = filter_mask[0] == 2  # 过滤器分割结果
+                P = np.sum(S & M) / np.sum(M) if np.sum(M) > 0 else 0
+
+                if P < self.filter_threshold:
+                    # 不满足质量要求，返回原始数据
+                    print(f"Synthetic tumor discarded. Quality score: {P:.4f}")
                     return d
 
-            # 更新数据
-            d['image'][0], d['label'][0] = synthesized_image, synthesized_label
+            # 如果通过了过滤，更新样本数据
+            d['image'][0] = synthesized_image
+            d['label'][0] = synthesized_label
 
         return d
 
-    def _calculate_quality_score(self, synthesized_image, synthesized_label):
-        """利用过滤器计算合成肿瘤的质量得分"""
-        with torch.no_grad():
-            # 输入合成肿瘤，获取分割预测
-            tumor_mask = torch.tensor(synthesized_label == 1, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-            tumor_input = torch.tensor(synthesized_image).unsqueeze(0).unsqueeze(0)
-            tumor_prediction = self.tumor_filter(tumor_input)
-
-            # 计算与真实标签的匹配比例 (公式4)
-            predicted_tumor = (tumor_prediction > 0.5).float()
-            matching_voxels = (predicted_tumor * tumor_mask).sum().item()
-            total_tumor_voxels = tumor_mask.sum().item()
-            quality_score = matching_voxels / (total_tumor_voxels + 1e-8)  # 避免除零
-
-        return quality_score

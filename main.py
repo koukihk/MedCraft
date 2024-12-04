@@ -252,7 +252,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, tumor_filter=None):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, filter_model=None, filter_inferer=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -271,7 +271,8 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, tum
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name, tumor_filter=tumor_filter,
+                               ellipsoid_model=ellipsoid_model, model_name=model_name,
+                               filter_model=filter_model, filter_inferer=filter_inferer,
                                filter_enabled=args.filter, filter_threshold=args.fil_threshold),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
@@ -404,7 +405,7 @@ def load_ellipsoid_model():
     ellipsoid_model = EllipsoidFitter.from_precomputed_parameters(center, axes, radii)
     return ellipsoid_model
 
-def load_filter_model(args, device):
+def load_filter(args):
     inf_size = [96, 96, 96]
     if args.model_name == 'swin_unetrv2':
         if args.swin_type == 'tiny':
@@ -442,16 +443,16 @@ def load_filter_model(args, device):
     for k, v in checkpoint['state_dict'].items():
         new_state_dict[k.replace('backbone.', '')] = v
     model.load_state_dict(new_state_dict, strict=False)
-    model = model.to(device)
+    model.cuda(args.gpu)
     model_inferer = partial(
         sliding_window_inference,
         roi_size=inf_size,
         sw_batch_size=1,
         predictor=model,
-        overlap=0.75,
+        overlap=args.val_overlap,
         mode='gaussian'
     )
-    return model_inferer
+    return model, model_inferer
 
 
 def main_worker(gpu, args):
@@ -467,9 +468,10 @@ def main_worker(gpu, args):
         ellipsoid_model = load_ellipsoid_model()
         model_name = 'ellipsoid'
 
-    tumor_filter = None
+    filter_model = None
+    filter_inferer = None
     if args.filter:
-        tumor_filter = load_filter_model(args, torch.device("cuda"))
+        filter_model, filter_inferer = load_filter(args, torch.device("cuda"))
 
     if args.distributed:
         # in new Pytorch/python lambda functions fail to pickle with spawn
@@ -504,7 +506,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, tumor_filter)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, filter_inferer)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
