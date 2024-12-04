@@ -471,7 +471,7 @@ def main_worker(gpu, args):
     filter_model = None
     filter_inferer = None
     if args.filter:
-        filter_model, filter_inferer = load_filter(args, torch.device("cuda"))
+        filter_model, filter_inferer = load_filter(args)
 
     if args.distributed:
         # in new Pytorch/python lambda functions fail to pickle with spawn
@@ -506,7 +506,8 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, filter_inferer)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, filter_model,
+                                                    filter_inferer)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
