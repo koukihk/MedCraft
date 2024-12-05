@@ -80,24 +80,30 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             )
 
             if self.filter_enabled and self.filter_model is not None and self.filter_inferer is not None:
-                # 通过过滤器模型进行质量检测
-                filter_logits = self.filter_inferer(synthesized_image.unsqueeze(0).cuda())
-                filter_probs = torch.softmax(filter_logits, dim=1).cpu().numpy()
-                filter_mask = np.argmax(filter_probs, axis=1).astype(np.uint8)
+                with torch.no_grad():
+                    # 将 synthesized_image 从 numpy.ndarray 转换为 tensor
+                    synthesized_image = torch.from_numpy(synthesized_image).float()
 
-                # 根据过滤器的输出计算满意比例
-                M = synthesized_label == 2  # 真实肿瘤掩码
-                S = filter_mask[0] == 2  # 过滤器分割结果
-                P = np.sum(S & M) / np.sum(M) if np.sum(M) > 0 else 0
+                    # 通过过滤器模型进行质量检测
+                    if self.filter_inferer is not None:
+                        filter_logits = self.filter_inferer(synthesized_image.unsqueeze(0).unsqueeze(0).cuda())
+                    else:
+                        filter_logits = self.filter_model(synthesized_image.unsqueeze(0).unsqueeze(0).cuda())
+                    filter_probs = torch.softmax(filter_logits, dim=1).cpu().numpy()
+                    filter_mask = np.argmax(filter_probs, axis=1).astype(np.uint8)
 
-                if P < self.filter_threshold:
-                    # 不满足质量要求，返回原始数据
-                    print(f"Synthetic tumor discarded. Quality score: {P:.4f}")
-                    return d
+                    # 根据过滤器的输出计算满意比例
+                    M = synthesized_label == 2  # 真实肿瘤掩码
+                    S = filter_mask[0] == 2  # 过滤器分割结果
+                    P = np.sum(S & M) / np.sum(M) if np.sum(M) > 0 else 0
+
+                    if P < self.filter_threshold:
+                        # 不满足质量要求，返回原始数据
+                        print(f"Synthetic tumor discarded. Quality score: {P:.4f}")
+                        return d
 
             # 如果通过了过滤，更新样本数据
             d['image'][0] = synthesized_image
             d['label'][0] = synthesized_label
 
         return d
-

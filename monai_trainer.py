@@ -274,7 +274,7 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
 
             with autocast(enabled=args.amp):
                 if model_inferer is not None:
-                    # torch.cuda.empty_cache()
+                    torch.cuda.empty_cache()
                     logits = model_inferer(data)  # another inferer (e.g. sliding window)
                 else:
                     logits = model(data)
