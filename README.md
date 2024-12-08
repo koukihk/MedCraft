@@ -3,7 +3,7 @@ This repository provides extensive examples of synthetic liver tumors generated 
 **Amazing**, right?
 
 ```
-root
+MedCraft
 │  main.py
 │  monai_trainer.py // Training script using MONAI framework
 │  transfer_label.py
@@ -89,9 +89,9 @@ wget https://huggingface.co/datasets/qicq1c/Pubilcdataset/resolve/main/10_Decath
 The code is tested on `python 3.8, Pytorch 1.11`.
 
 ```bash
-conda create -n syn python=3.8
-source activate syn (or conda activate syn)
-cd SyntheticTumors
+conda create -n medcraft python=3.8
+source activate medcraft (or conda activate medcraft)
+cd MedCraft
 pip install external/surface-distance
 pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
 pip install -r requirements.txt
@@ -114,24 +114,24 @@ wget https://www.dropbox.com/s/8e3hlza16vor05s/label.zip
 ## 1. Train segmentation models using synthetic tumors
 
 ```bash
-conda activate syn
-cd code/SyntheticTumors
-train_path=/home/zky/code/DiffTumor/datafolds/healthy_ct
-val_path=/home/zky/code/DiffTumor/datafolds/10_Decathlon/Task03_Liver
+conda activate medcraft
+cd code/MedCraft
+train_path=/home/zky/code/MedCraft/datafolds/healthy_ct
+val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
 fold=0
 dist=$((RANDOM % 99999 + 10000))
 
 # UNET (no.pretrain)
-python -W ignore main.py --optim_lr=4e-4 --batch_size=2 --lrschedule=warmup_cosine --optim_name=adamw --model_name=unet --val_every=200 --max_epochs=4000 --save_checkpoint --workers=2 --noamp --distributed --dist-url=tcp://127.0.0.1:$dist --cache_num=200 --val_overlap=0.5 --syn --logdir="runs/synt.no_pretrain.unet$fold" --train_dir $train_path --val_dir $val_path --json_dir datafolds/fold_$fold.json
+python -W ignore main.py --optim_lr=4e-4 --batch_size=2 --lrschedule=warmup_cosine --optim_name=adamw --model_name=unet --val_every=200 --max_epochs=4000 --save_checkpoint --workers=2 --noamp --distributed --dist-url=tcp://127.0.0.1:$dist --cache_num=200 --val_overlap=0.5 --syn --ellipsoid --logdir="runs/synt.no_pretrain.unet$fold" --train_dir $train_path --val_dir $val_path --json_dir datafolds/fold_$fold.json
 ```
 
 ## 2. Train segmentation models using real tumors (for comparison)
 
 ```bash
-conda activate syn
-cd code/SyntheticTumors
-train_path=/home/zky/code/DiffTumor/datafolds/healthy_ct
-val_path=/home/zky/code/DiffTumor/datafolds/10_Decathlon/Task03_Liver
+conda activate medcraft
+cd code/MedCraft
+train_path=/home/zky/code/MedCraft/datafolds/healthy_ct
+val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
 fold=0
 dist=$((RANDOM % 99999 + 10000))
 
@@ -144,9 +144,9 @@ python -W ignore main.py --optim_lr=4e-4 --batch_size=2 --lrschedule=warmup_cosi
 #### AI model trained by synthetic tumors
 
 ```bash
-conda activate syn
-cd code/SyntheticTumors
-val_path=/home/zky/code/DiffTumor/datafolds/10_Decathlon/Task03_Liver
+conda activate medcraft
+cd code/MedCraft
+val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
 fold=0
 
 # UNET (no.pretrain)
@@ -156,9 +156,9 @@ python -W ignore validation.py --model=unet --val_overlap=0.75 --val_dir $val_pa
 #### AI model trained by real tumors
 
 ```bash
-conda activate syn
-cd code/SyntheticTumors
-val_path=/home/zky/code/DiffTumor/datafolds/10_Decathlon/Task03_Liver
+conda activate medcraft
+cd code/MedCraft
+val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
 fold=0
 
 # UNET (no.pretrain)
