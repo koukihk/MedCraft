@@ -115,9 +115,9 @@ wget https://www.dropbox.com/s/8e3hlza16vor05s/label.zip
 
 ```bash
 conda activate medcraft
-cd code/MedCraft
-train_path=/home/zky/code/MedCraft/datafolds/healthy_ct
-val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
+cd MedCraft
+train_path=datafolds/healthy_ct
+val_path=datafolds/10_Decathlon/Task03_Liver
 fold=0
 dist=$((RANDOM % 99999 + 10000))
 
@@ -129,9 +129,9 @@ python -W ignore main.py --optim_lr=4e-4 --batch_size=2 --lrschedule=warmup_cosi
 
 ```bash
 conda activate medcraft
-cd code/MedCraft
-train_path=/home/zky/code/MedCraft/datafolds/healthy_ct
-val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
+cd MedCraft
+train_path=datafolds/healthy_ct
+val_path=datafolds/10_Decathlon/Task03_Liver
 fold=0
 dist=$((RANDOM % 99999 + 10000))
 
@@ -145,8 +145,8 @@ python -W ignore main.py --optim_lr=4e-4 --batch_size=2 --lrschedule=warmup_cosi
 
 ```bash
 conda activate medcraft
-cd code/MedCraft
-val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
+cd MedCraft
+val_path=datafolds/10_Decathlon/Task03_Liver
 fold=0
 
 # UNET (no.pretrain)
@@ -157,8 +157,8 @@ python -W ignore validation.py --model=unet --val_overlap=0.75 --val_dir $val_pa
 
 ```bash
 conda activate medcraft
-cd code/MedCraft
-val_path=/home/zky/code/MedCraft/datafolds/10_Decathlon/Task03_Liver
+cd MedCraft
+val_path=datafolds/10_Decathlon/Task03_Liver
 fold=0
 
 # UNET (no.pretrain)
