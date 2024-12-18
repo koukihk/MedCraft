@@ -1,9 +1,5 @@
-import random
-import string
-import time
-import warnings
 import os
-
+import warnings
 from functools import partial
 from os import environ
 
@@ -29,7 +25,7 @@ from tumor_analyzer import TumorAnalyzer, EllipsoidFitter
 warnings.filterwarnings("ignore")
 
 ## Online Tumor Generation
-from TumorGenerated import TumorGenerated, SyntheticTumorFilter
+from TumorGenerated import TumorGenerated
 
 import argparse
 
@@ -39,8 +35,10 @@ parser.add_argument('--syn', action='store_true')  # use synthetic tumors for tr
 parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
 parser.add_argument('--gen_folder_name', default='default', type=str)
 parser.add_argument('--filter', action='store_true')
-parser.add_argument('--fil_dir', default='runs/standard.unet', type=str)
+parser.add_argument('--fil_dir', default='runs/filter.unet', type=str)
 parser.add_argument('--fil_threshold', default=0.5, type=float)
+parser.add_argument('--filter_tumors', action='store_true', help='Enable tumor quality filtering')
+parser.add_argument('--quality_threshold', type=float, default=0.5, help='Quality threshold for filtering tumors')
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_cv', action='store_true')
@@ -470,7 +468,7 @@ def main_worker(gpu, args):
 
     filter_model = None
     filter_inferer = None
-    if args.filter:
+    if args.filter_tumors:
         filter_model, filter_inferer = load_filter(args)
 
     if args.distributed:
@@ -506,8 +504,8 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, filter_model,
-                                                    filter_inferer)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, None,
+                                                    None)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
@@ -623,12 +621,12 @@ def main_worker(gpu, args):
     train_sampler = AMDistributedSampler(train_ds) if args.distributed else None
     # train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=4,
     #                                sampler=train_sampler, pin_memory=True, multiprocessing_context='spawn')
-    train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=0,
+    train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=4,
                                    sampler=train_sampler, pin_memory=True)
 
     val_ds = data.Dataset(data=new_val_files, transform=val_transform)
     val_sampler = AMDistributedSampler(val_ds, shuffle=False) if args.distributed else None
-    val_loader = data.DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=0, sampler=val_sampler,
+    val_loader = data.DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4, sampler=val_sampler,
                                  pin_memory=True)
 
     model_inferer = partial(sliding_window_inference, roi_size=inf_size, sw_batch_size=1, predictor=model,
@@ -702,11 +700,12 @@ def main_worker(gpu, args):
                             val_channel_names=val_channel_names,
                             val_shape_dict=val_shape_dict,
                             post_label=post_label,
-                            post_pred=post_pred)
+                            post_pred=post_pred,
+                            filter_model=filter_model,
+                            filter_inferer=filter_inferer)
 
     return accuracy
 
 
 if __name__ == '__main__':
-    # mp.set_start_method("spawn", force=True)
     main()

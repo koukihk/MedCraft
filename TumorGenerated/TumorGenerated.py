@@ -1,5 +1,6 @@
 import random
 from typing import Hashable, Mapping, Dict
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
@@ -8,7 +9,7 @@ from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
 from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_O,
-                    get_predefined_texture_A, get_predefined_texture_B, get_predefined_texture_C,)
+                    get_predefined_texture_A, get_predefined_texture_B, get_predefined_texture_C, )
 
 Organ_List = {'liver': [1, 2], 'pancreas': [1, 2], 'kidney': [1, 2]}
 Organ_HU = {'liver': [100, 160], 'pancreas': [100, 160], 'kidney': [140, 200]}
@@ -26,7 +27,9 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  filter_model=None,
                  filter_inferer=None,
                  filter_enabled: bool = False,
-                 filter_threshold: float = 0.5
+                 filter_threshold: float = 0.5,
+                 batch_size: int = 8,  # 批量处理过滤的大小
+                 max_workers: int = 4  # 异步线程数
                  ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)
@@ -35,23 +38,24 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.gmm_list = gmm_list
         self.ellipsoid_model = ellipsoid_model
         self.model_name = model_name
-        self.kernel_size = (3, 3, 3)  # Receptive Field
-        self.organ_hu_lowerbound = Organ_HU['liver'][0]  # organ hu lowerbound
-        self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
-        self.organ_standard_val = 0  # organ standard value
+        self.kernel_size = (3, 3, 3)
+        self.organ_hu_lowerbound = Organ_HU['liver'][0]
+        self.outrange_standard_val = Organ_HU['liver'][1]
+        self.organ_standard_val = 0
         self.hu_processor = False
         self.edge_advanced_blur = True
         self.filter_model = filter_model
         self.filter_inferer = filter_inferer
         self.filter_enabled = filter_enabled
         self.filter_threshold = filter_threshold
+        self.batch_size = batch_size
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
         assert len(tumor_prob) == 5
         self.tumor_prob = np.array(tumor_prob)
-        # texture shape: 420, 300, 320
-        # self.textures = pre_define 10 texture
+
         self.textures = []
         sigma_as = [3, 6, 9, 12, 15]
         sigma_bs = [4, 7]
@@ -60,7 +64,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             for sigma_b in sigma_bs:
                 texture = get_predefined_texture_B(predefined_texture_shape, sigma_a, sigma_b)
                 self.textures.append(texture)
-        print("All predefined texture have generated.")
+        print("All predefined texture have been generated.")
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> Dict[Hashable, NdarrayOrTensor]:
         d = dict(data)
@@ -79,7 +83,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                 self.ellipsoid_model, self.model_name
             )
 
-            if self.filter_enabled and self.filter_model is not None and self.filter_inferer is not None:
+            if self.filter_enabled and self.filter_model is not None:
                 with torch.no_grad():
                     # 将 synthesized_image 从 numpy.ndarray 转换为 tensor
                     synthesized_image = torch.from_numpy(synthesized_image).float()

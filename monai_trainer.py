@@ -174,11 +174,52 @@ class AverageMeter(object):
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
 
-def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
+def calculate_quality_proportion(segmentation_output, tumor_mask):
+    """
+    Calculate the quality proportion P for the synthetic tumor.
+    Args:
+        segmentation_output (torch.Tensor): Segmentation output from the model.
+        tumor_mask (torch.Tensor): Ground truth tumor mask.
+    Returns:
+        float: The quality proportion P.
+    """
+    seg_tumor = (segmentation_output > 0.5).float()  # Threshold to get binary tumor region
+    tumor_voxels = tumor_mask.sum().item()
+    if tumor_voxels == 0:
+        return 0  # Avoid division by zero
+    matched_voxels = (seg_tumor * tumor_mask).sum().item()
+    return matched_voxels / tumor_voxels
+
+
+def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, threshold=0.5):
+    """
+    Perform quality filtering for synthetic tumor samples.
+    Args:
+        data (torch.Tensor): Input image data.
+        target (torch.Tensor): Ground truth tumor mask.
+        model (torch.nn.Module): Segmentation model.
+        model_inferer (Callable): Model inferer function (e.g., sliding window).
+        use_inferer (bool): Whether to use the inferer for prediction.
+        threshold (float): Threshold for quality proportion.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Filtered data and target.
+    """
+    with torch.no_grad():
+        if use_inferer:
+            output = torch.sigmoid(model_inferer(data))
+        else:
+            output = torch.sigmoid(model(data))
+
+        quality_proportion = calculate_quality_proportion(output, target)
+        if quality_proportion < threshold:
+            return None, None  # Filter out low-quality samples
+    return data, target
+
+
+def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter_model=None, filter_inferer=None):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
-    run_acc = AverageMeter()
 
     folder = args.gen_folder_name
     if args.gmm:
@@ -187,7 +228,6 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         folder = 'ellipsoid'
 
     for idx, batch_data in enumerate(loader):
-
         if isinstance(batch_data, list):
             if args.gen:
                 continue
@@ -200,8 +240,17 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
 
         data, target = data.cuda(args.rank), target.cuda(args.rank)
 
-        # optimizer.zero_grad()
-        for param in model.parameters(): param.grad = None
+        # Apply filtering
+        if args.filter_tumors:
+            filtered_data, filtered_target = filter_synthetic_tumor(
+                data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.quality_threshold
+            )
+            if filtered_data is None:
+                continue  # Skip this batch if the sample is filtered out
+            data, target = filtered_data, filtered_target
+
+        for param in model.parameters():
+            param.grad = None
 
         with autocast(enabled=args.amp):
             logits = model(data)
@@ -219,23 +268,16 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
             loss_list = distributed_all_gather([loss], out_numpy=True, is_valid=idx < loader.sampler.valid_length)
             run_loss.update(np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0),
                             n=args.batch_size * args.world_size)
-
         else:
-            #             run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
             run_loss.update(loss.item(), n=args.batch_size)
 
         if args.rank == 0:
-            # print(not_nans)
             print('Epoch {}/{} {}/{}'.format(epoch, args.max_epochs, idx, len(loader)),
                   'loss: {:.4f}'.format(run_loss.avg),
-                  #                   'acc', run_acc.avg,
                   'time {:.2f}s'.format(time.time() - start_time))
         start_time = time.time()
 
-    for param in model.parameters(): param.grad = None  # just in case
-
-    return run_loss.avg  # , run_acc.avg
-
+    return run_loss.avg
 
 def resample(img, target_size):
     imx, imy, imz = img.shape
@@ -368,7 +410,9 @@ def run_training(model,
                  start_epoch=0,
                  val_channel_names=None,
                  post_label=None,
-                 post_pred=None
+                 post_pred=None,
+                 filter_model=None,
+                 filter_inferer=None
                  ):
     # np.set_printoptions(formatter={'float': '{: 0.3f}'.format}, suppress=True)
 
@@ -393,7 +437,7 @@ def run_training(model,
 
         epoch_time = time.time()
         train_loss = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
-                                 args=args)
+                                 args=args, filter_model=filter_model, filter_inferer=filter_inferer)
 
         if args.rank == 0:
             print('Final training  {}/{}'.format(epoch, args.max_epochs - 1), 'loss: {:.4f}'.format(train_loss),
