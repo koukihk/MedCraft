@@ -2,7 +2,7 @@
 
 from .TumorGenerated import TumorGenerated
 
-from .MixupTransform import MixupTransform
+from .Mixup3D import Mixup3D
 
 from .utils import SynthesisTumor
 

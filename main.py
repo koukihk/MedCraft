@@ -25,7 +25,7 @@ from tumor_analyzer import TumorAnalyzer, EllipsoidFitter
 warnings.filterwarnings("ignore")
 
 ## Online Tumor Generation
-from TumorGenerated import TumorGenerated
+from TumorGenerated import TumorGenerated, Mixup3D
 
 import argparse
 
@@ -259,6 +259,7 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, fil
                 transforms.AddChanneld(keys=["image", "label"]),
                 TumorGenerated(keys=["image", "label"], prob=1.0, gmm_list=gmm_list,
                                ellipsoid_model=ellipsoid_model, model_name=model_name),  # here we use online
+                Mixup3D(keys=["image", "label", "mix_image", "mix_label"], alpha=0.4, prob=0.5),
             ]
         )
 
@@ -277,6 +278,7 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, fil
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
                 ),
+                Mixup3D(keys=["image", "label", "mix_image", "mix_label"], alpha=0.4, prob=0.5),
                 transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"],
                                        spatial_size=[96, 96, 96]),
                 # transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
@@ -453,6 +455,19 @@ def load_filter(args):
     )
     return model, model_inferer
 
+def extend_datalist(datalist):
+    new_datalist = []
+    for i in range(len(datalist)):
+        for j in range(len(datalist)):
+            if i != j:
+                new_item = {
+                    "image": datalist[i]["image"].replace('.npy', ''),
+                    "label": datalist[i]["label"].replace('.npy', ''),
+                    "mix_image": datalist[j]["image"].replace('.npy', ''),
+                    "mix_label": datalist[j]["label"].replace('.npy', '')
+                }
+                new_datalist.append(new_item)
+    return new_datalist
 
 def main_worker(gpu, args):
     model_name = None
@@ -581,6 +596,8 @@ def main_worker(gpu, args):
     datalist = load_decathlon_datalist(datalist_json, True, "training", base_dir=data_dir)
     val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
 
+    train_datalist = extend_datalist(datalist)
+
     new_datalist = []
     for item in datalist:
         new_item = {}
@@ -611,7 +628,7 @@ def main_worker(gpu, args):
     print('train_files files', len(new_datalist), 'validation files', len(new_val_files))
 
     train_ds = data.SmartCacheDataset(
-        data=datalist,
+        data=train_datalist,
         transform=train_transform,
         cache_num=args.cache_num,
         cache_rate=1.0,
