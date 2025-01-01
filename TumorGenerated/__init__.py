@@ -2,6 +2,8 @@
 
 from .TumorGenerated import TumorGenerated
 
+from .MixupTransform import MixupTransform
+
 from .utils import SynthesisTumor
 
-from .filter import SyntheticTumorFilter
+from .SyntheticTumorFilter import SyntheticTumorFilter

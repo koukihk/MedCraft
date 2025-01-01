@@ -4,12 +4,6 @@ import torch.nn.functional as F
 
 class SyntheticTumorFilter:
     def __init__(self, model, inferer, device, threshold=0.5):
-        """
-        Args:
-            model: 预训练的3D分割模型
-            inferer: sliding window inference函数，用于大体积3D数据的推理
-            threshold: 质量评估阈值
-        """
         self.model = model
         self.inferer = inferer
         self.device = device
@@ -17,15 +11,6 @@ class SyntheticTumorFilter:
 
     @torch.no_grad()
     def calculate_quality_score(self, image, mask):
-        """
-        计算3D合成肿瘤的质量分数
-        Args:
-            image: 3D图像 shape: [C,D,H,W] 或 [D,H,W]
-            mask: 3D肿瘤掩码 shape: [C,D,H,W] 或 [D,H,W]
-        Returns:
-            quality_score: 质量分数
-        """
-        # 标准化输入维度
         if image.ndim == 3:  # [D,H,W]
             image = image.unsqueeze(0).unsqueeze(0)  # [1,1,D,H,W]
         elif image.ndim == 4:  # [C,D,H,W]
@@ -34,16 +19,13 @@ class SyntheticTumorFilter:
         if mask.ndim == 3:  # [D,H,W]
             mask = mask.unsqueeze(0)  # [1,D,H,W]
 
-        # 确保数据类型和设备
         image = image.to(self.device, dtype=torch.float32)
         mask = mask.to(self.device, dtype=torch.float32)
 
-        # 使用 sliding window inference 进行 3D 分割预测
         pred = self.inferer(image)  # [B,C,D,H,W]
         pred = F.softmax(pred, dim=1)
         pred = (pred.argmax(dim=1) > 0).float()  # [B,D,H,W]
 
-        # 计算重叠比例
         tumor_mask = (mask > 0)
         intersection = torch.sum(pred * tumor_mask)
         total_tumor_voxels = torch.sum(tumor_mask)
@@ -55,13 +37,5 @@ class SyntheticTumorFilter:
         return quality_score
 
     def __call__(self, image, mask):
-        """
-        执行3D肿瘤质量过滤
-        Args:
-            image: 3D图像
-            mask: 3D肿瘤掩码
-        Returns:
-            passed: 是否通过质量检测
-        """
         quality_score = self.calculate_quality_score(image, mask)
         return quality_score >= self.threshold

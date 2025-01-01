@@ -35,10 +35,11 @@ parser.add_argument('--syn', action='store_true')  # use synthetic tumors for tr
 parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
 parser.add_argument('--gen_folder_name', default='default', type=str)
 parser.add_argument('--filter', action='store_true')
-parser.add_argument('--fil_dir', default='runs/filter.unet', type=str)
+parser.add_argument('--fil_dir', default='runs/standard_all.unet', type=str)
 parser.add_argument('--fil_threshold', default=0.5, type=float)
 parser.add_argument('--filter_tumors', action='store_true', help='Enable tumor quality filtering')
-parser.add_argument('--quality_threshold', type=float, default=0.5, help='Quality threshold for filtering tumors')
+parser.add_argument('--quality_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
+parser.add_argument('--mixup', action='store_true')
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_cv', action='store_true')
