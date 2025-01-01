@@ -34,9 +34,7 @@ parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 parser.add_argument('--syn', action='store_true')  # use synthetic tumors for training
 parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
 parser.add_argument('--gen_folder_name', default='default', type=str)
-parser.add_argument('--filter', action='store_true')
 parser.add_argument('--fil_dir', default='runs/standard_all.unet', type=str)
-parser.add_argument('--fil_threshold', default=0.5, type=float)
 parser.add_argument('--filter_tumors', action='store_true', help='Enable tumor quality filtering')
 parser.add_argument('--quality_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
 parser.add_argument('--mixup', action='store_true')
@@ -271,9 +269,7 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, fil
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name,
-                               filter_model=filter_model, filter_inferer=filter_inferer,
-                               filter_enabled=args.filter, filter_threshold=args.fil_threshold),
+                               ellipsoid_model=ellipsoid_model, model_name=model_name),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -520,8 +516,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name, None,
-                                                    None)
+    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
