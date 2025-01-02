@@ -675,7 +675,7 @@ def main_worker(gpu, args):
         model.cuda(args.gpu)  # ??
 
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], output_device=args.gpu,
-                                                          find_unused_parameters=True)
+                                                          find_unused_parameters=False)
 
     if args.optim_name == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.optim_lr, weight_decay=args.reg_weight)

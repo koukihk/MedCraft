@@ -16,7 +16,9 @@ class Mixup3D(MapTransform):
         image1, label1 = data['image'], data['label']
         image2, label2 = data['mix_image'], data['mix_label']
 
-        image_mix = lam * image1 + (1 - lam) * image2
+        image1 = torch.tensor(image1) if not isinstance(image1, torch.Tensor) else image1
+        image2 = torch.tensor(image2) if not isinstance(image2, torch.Tensor) else image2
+        image_mix = lam * image1.float() + (1 - lam) * image2.float()
 
         label1_onehot = torch.nn.functional.one_hot(label1.long(), num_classes=3).float()
         label2_onehot = torch.nn.functional.one_hot(label2.long(), num_classes=3).float()
