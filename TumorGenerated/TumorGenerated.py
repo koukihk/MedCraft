@@ -32,12 +32,12 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         self.gmm_list = gmm_list
         self.ellipsoid_model = ellipsoid_model
         self.model_name = model_name
-        self.kernel_size = (3, 3, 3)  # Receptive Field
         self.organ_hu_lowerbound = Organ_HU['liver'][0]  # organ hu lowerbound
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
         self.organ_standard_val = 0  # organ standard value
         self.hu_processor = False
         self.edge_advanced_blur = True
+        self.mixup = True
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
@@ -67,5 +67,14 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                                                           self.organ_hu_lowerbound,
                                                           self.outrange_standard_val, self.edge_advanced_blur,
                                                           self.gmm_list, self.ellipsoid_model, self.model_name)
+
+            if self.mixup and (np.max(d['mix_label']) <= 1):
+                tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
+                texture = random.choice(self.textures)
+                d['mix_image'][0], d['mix_label'][0] = SynthesisTumor(d['mix_image'][0], d['mix_label'][0], tumor_type, texture,
+                                                              self.hu_processor, self.organ_standard_val,
+                                                              self.organ_hu_lowerbound,
+                                                              self.outrange_standard_val, self.edge_advanced_blur,
+                                                              self.gmm_list, self.ellipsoid_model, self.model_name)
 
         return d

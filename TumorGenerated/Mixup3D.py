@@ -13,11 +13,14 @@ class Mixup3D(MapTransform):
         if np.random.rand() > self.prob:
             return data
 
-        image1, label1 = data['image'], data['label']
-        image2, label2 = data['mix_image'], data['mix_label']
+        image1 = np.load(data['image'][0]) if isinstance(data['image'][0], str) else data['image'][0]
+        label1 = np.load(data['label'][0]) if isinstance(data['label'][0], str) else data['label'][0]
+        image2 = np.load(data['mix_image'][0]) if isinstance(data['mix_image'][0], str) else data['mix_image'][0]
+        label2 = np.load(data['mix_label'][0]) if isinstance(data['mix_label'][0], str) else data['mix_label'][0]
 
         image1 = torch.tensor(image1) if not isinstance(image1, torch.Tensor) else image1
         image2 = torch.tensor(image2) if not isinstance(image2, torch.Tensor) else image2
+
         image_mix = lam * image1.float() + (1 - lam) * image2.float()
 
         label1_onehot = torch.nn.functional.one_hot(label1.long(), num_classes=3).float()
@@ -25,6 +28,6 @@ class Mixup3D(MapTransform):
         label_mix_onehot = lam * label1_onehot + (1 - lam) * label2_onehot
         label_mix = torch.argmax(label_mix_onehot, dim=-1)
 
-        data['image'] = image_mix
-        data['label'] = label_mix
+        data['image'][0] = image_mix
+        data['label'][0] = label_mix
         return data

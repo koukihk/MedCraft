@@ -264,14 +264,14 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, fil
     elif args.syn:
         train_transform = transforms.Compose(
             [
-                transforms.LoadImaged(keys=["image", "label"]),
-                transforms.AddChanneld(keys=["image", "label"]),
-                transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
-                transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
+                transforms.LoadImaged(keys=["image", "label", "mix_image", "mix_label"]),
+                transforms.AddChanneld(keys=["image", "label", "mix_image", "mix_label"]),
+                transforms.Orientationd(keys=["image", "label", "mix_image", "mix_label"], axcodes="RAS"),
+                transforms.Spacingd(keys=["image", "label", "mix_image", "mix_label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
+                TumorGenerated(keys=["image", "label", "mix_image", "mix_label"], prob=0.9, gmm_list=gmm_list,
                                ellipsoid_model=ellipsoid_model, model_name=model_name),
                 transforms.ScaleIntensityRanged(
-                    keys=["image"], a_min=-21, a_max=189,
+                    keys=["image", "mix_image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
                 ),
                 Mixup3D(keys=["image", "label", "mix_image", "mix_label"], alpha=0.4, prob=0.5),
@@ -457,10 +457,10 @@ def extend_datalist(datalist):
         for j in range(len(datalist)):
             if i != j:
                 new_item = {
-                    "image": datalist[i]["image"].replace('.npy', ''),
-                    "label": datalist[i]["label"].replace('.npy', ''),
-                    "mix_image": datalist[j]["image"].replace('.npy', ''),
-                    "mix_label": datalist[j]["label"].replace('.npy', '')
+                    "image": datalist[i]["image"],
+                    "label": datalist[i]["label"],
+                    "mix_image": datalist[j]["image"],
+                    "mix_label": datalist[j]["label"]
                 }
                 new_datalist.append(new_item)
     return new_datalist
