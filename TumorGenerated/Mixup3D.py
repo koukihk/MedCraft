@@ -13,8 +13,8 @@ class Mixup3D(MapTransform):
         if np.random.rand() > self.prob:
             return data
 
-        image1 = np.load(data['image'][0]) if isinstance(data['image'][0], str) else data['image'][0]
-        label1 = np.load(data['label'][0]) if isinstance(data['label'][0], str) else data['label'][0]
+        image1 = data['image'][0]
+        label1 = data['label'][0]
         image2 = np.load(data['mix_image'][0]) if isinstance(data['mix_image'][0], str) else data['mix_image'][0]
         label2 = np.load(data['mix_label'][0]) if isinstance(data['mix_label'][0], str) else data['mix_label'][0]
 

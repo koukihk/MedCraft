@@ -37,7 +37,9 @@ parser.add_argument('--gen_folder_name', default='default', type=str)
 parser.add_argument('--fil_dir', default='runs/standard_all.unet', type=str)
 parser.add_argument('--filter_tumors', action='store_true', help='Enable tumor quality filtering')
 parser.add_argument('--quality_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
-parser.add_argument('--mixup', action='store_true')
+parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentation')
+parser.add_argument('--mixup_alpha', type=float, default=0.4, help='Alpha parameter for mixup')
+parser.add_argument('--mixup_prob', type=float, default=0.5, help='Probability of applying mixup')
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_cv', action='store_true')
@@ -249,7 +251,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, filter_model=None, filter_inferer=None):
+def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
     if args.gen:
         train_transform = transforms.Compose(
             [
@@ -264,17 +266,18 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None, fil
     elif args.syn:
         train_transform = transforms.Compose(
             [
-                transforms.LoadImaged(keys=["image", "label", "mix_image", "mix_label"]),
-                transforms.AddChanneld(keys=["image", "label", "mix_image", "mix_label"]),
-                transforms.Orientationd(keys=["image", "label", "mix_image", "mix_label"], axcodes="RAS"),
-                transforms.Spacingd(keys=["image", "label", "mix_image", "mix_label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label", "mix_image", "mix_label"], prob=0.9, gmm_list=gmm_list,
+                transforms.LoadImaged(keys=["image", "label"]),
+                transforms.AddChanneld(keys=["image", "label"]),
+                transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
+                transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
+                                    mode=("bilinear", "nearest")),
+                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
                                ellipsoid_model=ellipsoid_model, model_name=model_name),
                 transforms.ScaleIntensityRanged(
-                    keys=["image", "mix_image"], a_min=-21, a_max=189,
+                    keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
                 ),
-                Mixup3D(keys=["image", "label", "mix_image", "mix_label"], alpha=0.4, prob=0.5),
+                # Mixup3D(keys=["image", "label"], alpha=0.4, prob=0.5),
                 transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"],
                                        spatial_size=[96, 96, 96]),
                 # transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
@@ -579,7 +582,7 @@ def main_worker(gpu, args):
         model.load_state_dict(model_dict['state_dict'])
         print('Use pretrained weights')
 
-    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    dice_loss = DiceCELoss(to_onehot_y=False, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
 
     post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
     post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
@@ -591,7 +594,8 @@ def main_worker(gpu, args):
     datalist = load_decathlon_datalist(datalist_json, True, "training", base_dir=data_dir)
     val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
 
-    train_datalist = extend_datalist(datalist)
+    # train_datalist = extend_datalist(datalist)
+    train_datalist = datalist
 
     new_datalist = []
     for item in datalist:
