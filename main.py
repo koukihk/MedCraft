@@ -582,7 +582,7 @@ def main_worker(gpu, args):
         model.load_state_dict(model_dict['state_dict'])
         print('Use pretrained weights')
 
-    dice_loss = DiceCELoss(to_onehot_y=False, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
 
     post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
     post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)

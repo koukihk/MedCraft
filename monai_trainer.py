@@ -2,22 +2,18 @@ import json
 import os
 import shutil
 import sys
-import time
-import random
-from itertools import cycle
 
 # import tempfile
 # import matplotlib.pyplot as plt
-import numpy as np
 import scipy.ndimage as ndimage
 # import json
 import torch
 import torch.distributed as dist
 import torch.nn.parallel
 import torch.utils.data.distributed
-from torch.distributions.beta import Beta
-from torch.cuda.amp import GradScaler, autocast  # native AMP
+from torch.cuda.amp import GradScaler  # native AMP
 from torch.utils.tensorboard import SummaryWriter
+
 from tumor_saver import TumorSaver
 
 sys.path.append('../../pipextra/lib/python3.6/site-packages')  # add missing packages
@@ -220,28 +216,30 @@ def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, thre
 
 import random
 from torch.distributions import Beta
-from itertools import cycle
 from torch.cuda.amp import autocast
 import time
 import numpy as np
 
 
-def mixup_data_with_random_batch(data, target, loader, alpha=0.4, mixup_prob=0.5):
-    """
-    Apply Mixup with a certain probability using a random batch of data from the loader.
+class MixupDataLoader:
+    def __init__(self, loader):
+        self.loader = loader
+        self.cache_batch = None
+        self.iterator = iter(loader)
 
-    Args:
-        data (torch.Tensor): Current batch input images.
-        target (torch.Tensor): Current batch input labels.
-        loader (DataLoader): DataLoader to sample random batches.
-        alpha (float): Parameter for Beta distribution.
-        mixup_prob (float): Probability of applying Mixup.
+    def get_random_batch(self):
+        try:
+            if self.cache_batch is None:
+                self.cache_batch = next(self.iterator)
+            return self.cache_batch
+        except StopIteration:
+            self.iterator = iter(self.loader)
+            self.cache_batch = next(self.iterator)
+            return self.cache_batch
 
-    Returns:
-        mixed_data (torch.Tensor): Mixed image batch (or original if Mixup not applied).
-        mixed_target (torch.Tensor): Mixed label batch (or original if Mixup not applied).
-    """
-    if random.random() > mixup_prob:  # Skip Mixup with 1 - mixup_prob probability
+
+def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
+    if random.random() > mixup_prob:
         return data, target
 
     if alpha <= 0:
@@ -251,12 +249,12 @@ def mixup_data_with_random_batch(data, target, loader, alpha=0.4, mixup_prob=0.5
     beta_dist = Beta(alpha, alpha)
     lam = beta_dist.sample().item()
 
-    # Fetch a random batch from the DataLoader
-    random_batch = random.choice(list(loader))
+    # Get random batch from cached loader
+    random_batch = mixup_loader.get_random_batch()
     other_data = random_batch["image"].cuda(data.device)
     other_target = random_batch["label"].cuda(target.device)
 
-    # Ensure the additional batch matches the size of the current batch
+    # Ensure shapes match
     if other_data.shape != data.shape or other_target.shape != target.shape:
         raise ValueError("Mixup requires both batches to have the same shape.")
 
@@ -271,6 +269,8 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
+
+    mixup_loader = MixupDataLoader(loader) if args.mixup else None
 
     folder = args.gen_folder_name
     if args.gmm:
@@ -303,7 +303,9 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
         # Apply Mixup with certain probability (if enabled)
         if args.mixup:
             data, target = mixup_data_with_random_batch(
-                data, target, loader, alpha=args.mixup_alpha, mixup_prob=args.mixup_prob
+                data, target, mixup_loader,
+                alpha=args.mixup_alpha,
+                mixup_prob=args.mixup_prob
             )
 
         for param in model.parameters():
