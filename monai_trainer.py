@@ -182,7 +182,16 @@ def calculate_quality_proportion(segmentation_output, tumor_mask):
     Returns:
         float: The quality proportion P.
     """
-    seg_tumor = (segmentation_output > 0.5).float()  # Threshold to get binary tumor region
+    seg_tumor = (torch.argmax(segmentation_output, dim=0) == 2).float()
+
+    seg_tumor_np = seg_tumor.cpu().numpy()
+    labeled_array, num_features = ndimage.label(seg_tumor_np)
+    for i in range(1, num_features + 1):
+        component = (labeled_array == i)
+        if np.sum(component) < 8:
+            seg_tumor_np[component] = 0
+    seg_tumor = torch.tensor(seg_tumor_np).float().to(segmentation_output.device)
+
     tumor_voxels = tumor_mask.sum().item()
     if tumor_voxels == 0:
         return 0  # Avoid division by zero
