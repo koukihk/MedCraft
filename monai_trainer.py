@@ -173,55 +173,79 @@ class AverageMeter(object):
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
 
+import numpy as np
+from scipy.ndimage import label
+
+
+def denoise_pred(pred: np.ndarray):
+    """
+    # pred.shape can be either (3, H, W, D) or (batch_size, 3, H, W, D)
+    # 0: background, 1: liver, 2: tumor.
+    """
+    if pred.ndim == 4:  # 单个样本
+        return denoise_single_sample(pred)
+    elif pred.ndim == 5:  # 多个样本 (batch)
+        batch_denoised = np.zeros_like(pred)
+        for i in range(pred.shape[0]):
+            batch_denoised[i, ...] = denoise_single_sample(pred[i, ...])
+        return batch_denoised
+    else:
+        raise ValueError(f"Unexpected input dimensions: {pred.shape}")
+
+
+def denoise_single_sample(pred: np.ndarray):
+    """
+    处理单个样本的去噪步骤。
+    """
+    denoise_pred = np.zeros_like(pred)
+
+    live_channel = pred[1, ...]
+    labels, nb = label(live_channel)
+    max_sum = -1
+    choice_idx = -1
+    for idx in range(1, nb + 1):
+        component = (labels == idx)
+        if np.sum(component) > max_sum:
+            choice_idx = idx
+            max_sum = np.sum(component)
+    component = (labels == choice_idx)
+    denoise_pred[1, ...] = component
+
+    # 膨胀然后覆盖掉肝脏以外的肿瘤
+    liver_dilation = ndimage.binary_dilation(denoise_pred[1, ...], iterations=30).astype(bool)
+    denoise_pred[2, ...] = pred[2, ...].astype(bool) * liver_dilation
+
+    denoise_pred[0, ...] = 1 - np.logical_or(denoise_pred[1, ...], denoise_pred[2, ...])
+
+    return denoise_pred
+
+
 def calculate_quality_proportion(segmentation_output, tumor_mask):
-    """
-    Calculate the quality proportion P for the synthetic tumor.
-    Args:
-        segmentation_output (torch.Tensor): Segmentation output from the model.
-        tumor_mask (torch.Tensor): Ground truth tumor mask.
-    Returns:
-        float: The quality proportion P.
-    """
-    seg_tumor = (torch.argmax(segmentation_output, dim=0) == 2).float()
-
-    seg_tumor_np = seg_tumor.cpu().numpy()
-    labeled_array, num_features = ndimage.label(seg_tumor_np)
-    for i in range(1, num_features + 1):
-        component = (labeled_array == i)
-        if np.sum(component) < 8:
-            seg_tumor_np[component] = 0
-    seg_tumor = torch.tensor(seg_tumor_np).float().to(segmentation_output.device)
-
+    tumor_mask = (tumor_mask == 2).float()  # 只保留肿瘤区域
     tumor_voxels = tumor_mask.sum().item()
     if tumor_voxels == 0:
         return 0  # Avoid division by zero
-    matched_voxels = (seg_tumor * tumor_mask).sum().item()
+    # 提取肿瘤概率通道
+    if segmentation_output.ndim == 5:  # 带 batch 维度
+        seg_tumor_prob = segmentation_output[:, 2, ...]
+    else:  # 无 batch 维度
+        seg_tumor_prob = segmentation_output[2, ...]
+    matched_voxels = (seg_tumor_prob * tumor_mask).sum().item()
     return matched_voxels / tumor_voxels
 
 
 def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, threshold=0.5):
-    """
-    Perform quality filtering for synthetic tumor samples.
-    Args:
-        data (torch.Tensor): Input image data.
-        target (torch.Tensor): Ground truth tumor mask.
-        model (torch.nn.Module): Segmentation model.
-        model_inferer (Callable): Model inferer function (e.g., sliding window).
-        use_inferer (bool): Whether to use the inferer for prediction.
-        threshold (float): Threshold for quality proportion.
-    Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Filtered data and target.
-    """
     with torch.no_grad():
-        if use_inferer:
-            output = torch.sigmoid(model_inferer(data))
-        else:
-            output = torch.sigmoid(model(data))
+        output = model_inferer(data) if use_inferer else model(data)
+        output = torch.sigmoid(output)
+        output = denoise_pred(output.detach().cpu().numpy())  # 或根据需求调用
+        output = torch.tensor(output, device=data.device)  # 转回 Tensor
 
         quality_proportion = calculate_quality_proportion(output, target)
         if quality_proportion < threshold:
-            return None, None  # Filter out low-quality samples
+            return None, None  # 过滤低质量样本
     return data, target
+
 
 import random
 from torch.distributions import Beta
@@ -230,7 +254,7 @@ import time
 import numpy as np
 
 
-class MixupDataLoader:
+class MixupCutMixDataLoader:
     def __init__(self, loader):
         self.loader = loader
         self.cache_batch = None
@@ -247,7 +271,7 @@ class MixupDataLoader:
             return self.cache_batch
 
 
-def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
+def mixup_data_with_random_batch_origin(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
     if random.random() > mixup_prob:
         return data, target
 
@@ -274,12 +298,90 @@ def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4, mixup_pr
     return mixed_data, mixed_target
 
 
+def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4):
+    if alpha <= 0:
+        return data, target
+
+    # Sample lambda from Beta distribution
+    beta_dist = Beta(alpha, alpha)
+    lam = beta_dist.sample().item()
+
+    # Get random batch from cached loader
+    random_batch = mixup_loader.get_random_batch()
+    other_data = random_batch["image"].cuda(data.device)
+    other_target = random_batch["label"].cuda(target.device)
+
+    # Ensure shapes match
+    if other_data.shape != data.shape or other_target.shape != target.shape:
+        raise ValueError("Mixup requires both batches to have the same shape.")
+
+    # Apply Mixup
+    mixed_data = lam * data + (1 - lam) * other_data
+    mixed_target = lam * target + (1 - lam) * other_target
+
+    # Convert mixed_target to one-hot if needed
+    if mixed_target.ndimension() == 3:  # Assumes the target is 1D (class indices)
+        mixed_target = torch.nn.functional.one_hot(mixed_target.long(), num_classes=data.shape[1]).float()
+
+    return mixed_data, mixed_target
+
+
+def cutmix_data_with_random_batch(data, target, mixup_loader, beta=1.0):
+    # Sample lambda from Beta distribution
+    beta_dist = Beta(beta, beta)
+    lam = beta_dist.sample().item()
+
+    # Get random batch from cached loader
+    random_batch = mixup_loader.get_random_batch()
+    other_data = random_batch["image"].cuda(data.device)
+    other_target = random_batch["label"].cuda(target.device)
+
+    # Ensure shapes match
+    if other_data.shape != data.shape or other_target.shape != target.shape:
+        raise ValueError("CutMix requires both batches to have the same shape.")
+
+    # Apply CutMix
+    # Randomly select the region to cut from the data
+    _, _, H, W = data.shape
+    x1 = random.randint(0, W)
+    y1 = random.randint(0, H)
+    x2 = random.randint(x1, W)
+    y2 = random.randint(y1, H)
+
+    data[:, :, y1:y2, x1:x2] = other_data[:, :, y1:y2, x1:x2]
+    target[:, :, y1:y2, x1:x2] = other_target[:, :, y1:y2, x1:x2]
+
+    # Convert cutmix_target to one-hot if needed
+    if target.ndimension() == 3:  # Assumes the target is 1D (class indices)
+        target = torch.nn.functional.one_hot(target.long(), num_classes=data.shape[1]).float()
+
+    return data, target
+
+
+def rand_bbox(size, lam):
+    W = size[-1]
+    H = size[-2]
+    cut_rat = np.sqrt(1. - lam)
+    cut_w = np.int(W * cut_rat)
+    cut_h = np.int(H * cut_rat)
+
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+
+    bbx1 = np.clip(cx - cut_w // 2, 0, W)
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = np.clip(cx + cut_w // 2, 0, W)
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
+
+    return bbx1, bby1, bbx2, bby2
+
+
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter_model=None, filter_inferer=None):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
 
-    mixup_loader = MixupDataLoader(loader) if args.mixup else None
+    mixup_loader = MixupCutMixDataLoader(loader)
 
     folder = args.gen_folder_name
     if args.gmm:
@@ -300,22 +402,25 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
 
         data, target = data.cuda(args.rank), target.cuda(args.rank)
 
-        # Apply filtering
         if args.filter_tumors:
             filtered_data, filtered_target = filter_synthetic_tumor(
                 data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.quality_threshold
             )
             if filtered_data is None:
-                continue  # Skip this batch if the sample is filtered out
+                continue
             data, target = filtered_data, filtered_target
 
-        # Apply Mixup with certain probability (if enabled)
+        # Mixup or CutMix augmentation
+        # rand_prob = random.random()
         if args.mixup:
-            data, target = mixup_data_with_random_batch(
+            data, target = mixup_data_with_random_batch_origin(
                 data, target, mixup_loader,
                 alpha=args.mixup_alpha,
                 mixup_prob=args.mixup_prob
             )
+        #     data, target = mixup_data_with_random_batch(data, target, mixup_loader, alpha=args.mixup_alpha)
+        # elif args.cutmix and rand_prob < args.mixup_prob + args.cutmix_prob:
+        #     data, target = cutmix_data_with_random_batch(data, target, mixup_loader, beta=args.cutmix_beta)
 
         for param in model.parameters():
             param.grad = None
