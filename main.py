@@ -25,25 +25,19 @@ from tumor_analyzer import TumorAnalyzer, EllipsoidFitter
 warnings.filterwarnings("ignore")
 
 ## Online Tumor Generation
-from TumorGenerated import TumorGenerated, Mixup3D
+from TumorGenerated import TumorGenerated
 
 import argparse
 
 parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')  # use synthetic tumors for training
-parser.add_argument('--gen', action='store_true')  # only for saving synthetic CT
-parser.add_argument('--gen_folder_name', default='default', type=str)
 parser.add_argument('--fil_dir', default='runs/standard_all.unet', type=str)
 parser.add_argument('--filter_tumors', action='store_true', help='Enable tumor quality filtering')
 parser.add_argument('--quality_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
 parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentation')
 parser.add_argument('--mixup_alpha', type=float, default=0.2, help='Alpha parameter for mixup')
 parser.add_argument('--mixup_prob', type=float, default=0.15, help='Probability of applying mixup')
-parser.add_argument('--cutmix', action='store_true', help='Enable cutmix augmentation')
-parser.add_argument('--cutmix_beta', type=float, default=1.0, help='Beta parameter for cutmix')
-parser.add_argument('--cutmix_prob', type=float, default=0.25, help='Probability of applying cutmix')
-parser.add_argument('--visualize_aug', action='store_true')
 parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
 parser.add_argument('--gmm_split', action='store_true')
 parser.add_argument('--gmm_cv', action='store_true')
@@ -256,18 +250,7 @@ def optuna_run(args):
 
 
 def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
-    if args.gen:
-        train_transform = transforms.Compose(
-            [
-                transforms.LoadImaged(keys=["image", "label"]),
-                transforms.AddChanneld(keys=["image", "label"]),
-                TumorGenerated(keys=["image", "label"], prob=1.0, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name),  # here we use online
-                Mixup3D(keys=["image", "label", "mix_image", "mix_label"], alpha=0.4, prob=0.5),
-            ]
-        )
-
-    elif args.syn:
+    if args.syn:
         train_transform = transforms.Compose(
             [
                 transforms.LoadImaged(keys=["image", "label"]),

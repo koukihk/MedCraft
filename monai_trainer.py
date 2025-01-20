@@ -14,8 +14,6 @@ import torch.utils.data.distributed
 from torch.cuda.amp import GradScaler  # native AMP
 from torch.utils.tensorboard import SummaryWriter
 
-from tumor_saver import TumorSaver
-
 sys.path.append('../../pipextra/lib/python3.6/site-packages')  # add missing packages
 
 
@@ -172,10 +170,8 @@ class AverageMeter(object):
         # self.avg = self.sum / self.count if self.count > 0 else self.sum
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
-
 import numpy as np
 from scipy.ndimage import label
-
 
 def denoise_pred(pred: np.ndarray):
     """
@@ -191,7 +187,6 @@ def denoise_pred(pred: np.ndarray):
         return batch_denoised
     else:
         raise ValueError(f"Unexpected input dimensions: {pred.shape}")
-
 
 def denoise_single_sample(pred: np.ndarray):
     """
@@ -219,7 +214,6 @@ def denoise_single_sample(pred: np.ndarray):
 
     return denoise_pred
 
-
 def calculate_quality_proportion(segmentation_output, tumor_mask):
     tumor_mask = (tumor_mask == 2).float()  # 只保留肿瘤区域
     tumor_voxels = tumor_mask.sum().item()
@@ -234,17 +228,29 @@ def calculate_quality_proportion(segmentation_output, tumor_mask):
     return matched_voxels / tumor_voxels
 
 
-def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, threshold=0.5):
-    with torch.no_grad():
-        output = model_inferer(data) if use_inferer else model(data)
-        output = torch.sigmoid(output)
-        output = denoise_pred(output.detach().cpu().numpy())  # 或根据需求调用
-        output = torch.tensor(output, device=data.device)  # 转回 Tensor
+def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer, threshold=0.5):
+    filtered_data = []
+    filtered_target = []
 
-        quality_proportion = calculate_quality_proportion(output, target)
-        if quality_proportion < threshold:
-            return None, None  # 过滤低质量样本
-    return data, target
+    for i in range(data.size(0)):  # 遍历 batch 中的每个样本
+        single_data = data[i].unsqueeze(0)  # 提取单个样本
+        single_target = target[i].unsqueeze(0)
+
+        with torch.no_grad():
+            output = model_inferer(single_data) if use_inferer else model(single_data)
+            output = torch.sigmoid(output)
+            output = denoise_pred(output.detach().cpu().numpy())  # 可选的去噪操作
+            output = torch.tensor(output, device=data.device)  # 转回 Tensor
+
+            quality_proportion = calculate_quality_proportion(output, single_target)
+            if quality_proportion >= threshold:
+                filtered_data.append(single_data)
+                filtered_target.append(single_target)
+
+    if len(filtered_data) == 0:
+        return None, None  # 全部样本被过滤
+    # 将过滤后的样本重新拼接成 batch
+    return torch.cat(filtered_data, dim=0), torch.cat(filtered_target, dim=0)
 
 
 import random
@@ -270,8 +276,7 @@ class MixupCutMixDataLoader:
             self.cache_batch = next(self.iterator)
             return self.cache_batch
 
-
-def mixup_data_with_random_batch_origin(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
+def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
     if random.random() > mixup_prob:
         return data, target
 
@@ -297,85 +302,6 @@ def mixup_data_with_random_batch_origin(data, target, mixup_loader, alpha=0.4, m
 
     return mixed_data, mixed_target
 
-
-def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4):
-    if alpha <= 0:
-        return data, target
-
-    # Sample lambda from Beta distribution
-    beta_dist = Beta(alpha, alpha)
-    lam = beta_dist.sample().item()
-
-    # Get random batch from cached loader
-    random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].cuda(data.device)
-    other_target = random_batch["label"].cuda(target.device)
-
-    # Ensure shapes match
-    if other_data.shape != data.shape or other_target.shape != target.shape:
-        raise ValueError("Mixup requires both batches to have the same shape.")
-
-    # Apply Mixup
-    mixed_data = lam * data + (1 - lam) * other_data
-    mixed_target = lam * target + (1 - lam) * other_target
-
-    # Convert mixed_target to one-hot if needed
-    if mixed_target.ndimension() == 3:  # Assumes the target is 1D (class indices)
-        mixed_target = torch.nn.functional.one_hot(mixed_target.long(), num_classes=data.shape[1]).float()
-
-    return mixed_data, mixed_target
-
-
-def cutmix_data_with_random_batch(data, target, mixup_loader, beta=1.0):
-    # Sample lambda from Beta distribution
-    beta_dist = Beta(beta, beta)
-    lam = beta_dist.sample().item()
-
-    # Get random batch from cached loader
-    random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].cuda(data.device)
-    other_target = random_batch["label"].cuda(target.device)
-
-    # Ensure shapes match
-    if other_data.shape != data.shape or other_target.shape != target.shape:
-        raise ValueError("CutMix requires both batches to have the same shape.")
-
-    # Apply CutMix
-    # Randomly select the region to cut from the data
-    _, _, H, W = data.shape
-    x1 = random.randint(0, W)
-    y1 = random.randint(0, H)
-    x2 = random.randint(x1, W)
-    y2 = random.randint(y1, H)
-
-    data[:, :, y1:y2, x1:x2] = other_data[:, :, y1:y2, x1:x2]
-    target[:, :, y1:y2, x1:x2] = other_target[:, :, y1:y2, x1:x2]
-
-    # Convert cutmix_target to one-hot if needed
-    if target.ndimension() == 3:  # Assumes the target is 1D (class indices)
-        target = torch.nn.functional.one_hot(target.long(), num_classes=data.shape[1]).float()
-
-    return data, target
-
-
-def rand_bbox(size, lam):
-    W = size[-1]
-    H = size[-2]
-    cut_rat = np.sqrt(1. - lam)
-    cut_w = np.int(W * cut_rat)
-    cut_h = np.int(H * cut_rat)
-
-    cx = np.random.randint(W)
-    cy = np.random.randint(H)
-
-    bbx1 = np.clip(cx - cut_w // 2, 0, W)
-    bby1 = np.clip(cy - cut_h // 2, 0, H)
-    bbx2 = np.clip(cx + cut_w // 2, 0, W)
-    bby2 = np.clip(cy + cut_h // 2, 0, H)
-
-    return bbx1, bby1, bbx2, bby2
-
-
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter_model=None, filter_inferer=None):
     model.train()
     start_time = time.time()
@@ -383,44 +309,27 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
 
     mixup_loader = MixupCutMixDataLoader(loader)
 
-    folder = args.gen_folder_name
-    if args.gmm:
-        folder = 'gmm'
-    elif args.ellipsoid:
-        folder = 'ellipsoid'
-
     for idx, batch_data in enumerate(loader):
         if isinstance(batch_data, list):
-            if args.gen:
-                continue
             data, target = batch_data
         else:
-            if args.gen:
-                TumorSaver.save_data(batch_data, folder)
-                continue
             data, target = batch_data['image'], batch_data['label']
 
         data, target = data.cuda(args.rank), target.cuda(args.rank)
 
         if args.filter_tumors:
-            filtered_data, filtered_target = filter_synthetic_tumor(
+            data, target = filter_synthetic_tumor_batch(
                 data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.quality_threshold
             )
-            if filtered_data is None:
-                continue
-            data, target = filtered_data, filtered_target
+            if data is None:
+                continue  # 跳过整个 batch（所有样本都被过滤）
 
-        # Mixup or CutMix augmentation
-        # rand_prob = random.random()
         if args.mixup:
-            data, target = mixup_data_with_random_batch_origin(
+            data, target = mixup_data_with_random_batch(
                 data, target, mixup_loader,
                 alpha=args.mixup_alpha,
                 mixup_prob=args.mixup_prob
             )
-        #     data, target = mixup_data_with_random_batch(data, target, mixup_loader, alpha=args.mixup_alpha)
-        # elif args.cutmix and rand_prob < args.mixup_prob + args.cutmix_prob:
-        #     data, target = cutmix_data_with_random_batch(data, target, mixup_loader, beta=args.cutmix_beta)
 
         for param in model.parameters():
             param.grad = None
