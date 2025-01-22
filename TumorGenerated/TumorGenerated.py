@@ -18,17 +18,13 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  prob: float = 0.1,
                  tumor_prob=[0.2, 0.2, 0.2, 0.2, 0.2],
                  allow_missing_keys: bool = False,
-                 gmm_list=[],
                  ellipsoid_model=None,
-                 model_name=None
                  ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)
         random.seed(0)
         np.random.seed(0)
-        self.gmm_list = gmm_list
         self.ellipsoid_model = ellipsoid_model
-        self.model_name = model_name
         self.organ_hu_lowerbound = Organ_HU['liver'][0]  # organ hu lowerbound
         self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
         self.organ_standard_val = 0  # organ standard value
@@ -61,8 +57,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
             texture = random.choice(self.textures)
             d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
                                                           self.hu_processor, self.organ_standard_val,
-                                                          self.organ_hu_lowerbound,
-                                                          self.outrange_standard_val, self.edge_advanced_blur,
-                                                          self.gmm_list, self.ellipsoid_model, self.model_name)
+                                                          self.organ_hu_lowerbound, self.outrange_standard_val,
+                                                          self.edge_advanced_blur, self.ellipsoid_model)
 
         return d

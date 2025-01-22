@@ -38,10 +38,6 @@ parser.add_argument('--quality_threshold', type=float, default=0.3, help='Qualit
 parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentation')
 parser.add_argument('--mixup_alpha', type=float, default=0.2, help='Alpha parameter for mixup')
 parser.add_argument('--mixup_prob', type=float, default=0.15, help='Probability of applying mixup')
-parser.add_argument('--gmm', action='store_true')  # use GMM for selecting tumor points
-parser.add_argument('--gmm_split', action='store_true')
-parser.add_argument('--gmm_cv', action='store_true')
-parser.add_argument('--optimal_components', default='1', type=str)  # like '2,1'
 parser.add_argument('--ellipsoid', action='store_true')
 # parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
@@ -249,7 +245,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
+def _get_transform(args, ellipsoid_model=None):
     if args.syn:
         train_transform = transforms.Compose(
             [
@@ -258,8 +254,7 @@ def _get_transform(args, gmm_list=[], ellipsoid_model=None, model_name=None):
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
                                     mode=("bilinear", "nearest")),
-                TumorGenerated(keys=["image", "label"], prob=0.9, gmm_list=gmm_list,
-                               ellipsoid_model=ellipsoid_model, model_name=model_name),
+                TumorGenerated(keys=["image", "label"], prob=0.9, ellipsoid_model=ellipsoid_model),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -367,20 +362,6 @@ def main():
         else:
             main_worker(gpu=0, args=args)
 
-def load_gmm_list(args):
-    gmm_list = []
-    optimal_components = np.array(args.optimal_components.split(',')).astype(int)
-    cov_type = 'tied'
-    analyzer = TumorAnalyzer()
-    # here we use LiTS and you can modify it
-    analyzer.gmm_starter(args.val_dir, optimal_components, cov_type, args.gmm_split, args.gmm_cv, True)
-    if args.gmm_split:
-        gmm_list.append(analyzer.get_gmm_model('tiny'))
-        gmm_list.append(analyzer.get_gmm_model('non_tiny'))
-    else:
-        gmm_list.append(analyzer.get_gmm_model('global'))
-    return gmm_list
-
 def load_ellipsoid_model():
     center = [166, 143, 80]
     axes = [[-0.8, 0.6, 0.2], [-0.6, -0.8, 0.3], [-0.3, -0.1, -1.0]]
@@ -456,13 +437,6 @@ def extend_datalist(datalist):
     return new_datalist
 
 def main_worker(gpu, args):
-    model_name = None
-
-    gmm_list = []
-    if args.gmm:
-        gmm_list = load_gmm_list(args)
-        model_name = 'gmm'
-
     ellipsoid_model = None
     if args.ellipsoid:
         ellipsoid_model = load_ellipsoid_model()
@@ -506,7 +480,7 @@ def main_worker(gpu, args):
     else:
         root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
-    train_transform, val_transform = _get_transform(args, gmm_list, ellipsoid_model, model_name)
+    train_transform, val_transform = _get_transform(args, ellipsoid_model)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':
