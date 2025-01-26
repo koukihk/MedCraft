@@ -178,9 +178,9 @@ def denoise_pred(pred: np.ndarray):
     # pred.shape can be either (3, H, W, D) or (batch_size, 3, H, W, D)
     # 0: background, 1: liver, 2: tumor.
     """
-    if pred.ndim == 4:  # 单个样本
+    if pred.ndim == 4:
         return denoise_single_sample(pred)
-    elif pred.ndim == 5:  # 多个样本 (batch)
+    elif pred.ndim == 5:
         batch_denoised = np.zeros_like(pred)
         for i in range(pred.shape[0]):
             batch_denoised[i, ...] = denoise_single_sample(pred[i, ...])
@@ -189,9 +189,6 @@ def denoise_pred(pred: np.ndarray):
         raise ValueError(f"Unexpected input dimensions: {pred.shape}")
 
 def denoise_single_sample(pred: np.ndarray):
-    """
-    处理单个样本的去噪步骤。
-    """
     denoise_pred = np.zeros_like(pred)
 
     live_channel = pred[1, ...]
@@ -206,7 +203,6 @@ def denoise_single_sample(pred: np.ndarray):
     component = (labels == choice_idx)
     denoise_pred[1, ...] = component
 
-    # 膨胀然后覆盖掉肝脏以外的肿瘤
     liver_dilation = ndimage.binary_dilation(denoise_pred[1, ...], iterations=30).astype(bool)
     denoise_pred[2, ...] = pred[2, ...].astype(bool) * liver_dilation
 
@@ -215,14 +211,13 @@ def denoise_single_sample(pred: np.ndarray):
     return denoise_pred
 
 def calculate_quality_proportion(segmentation_output, tumor_mask):
-    tumor_mask = (tumor_mask == 2).float()  # 只保留肿瘤区域
+    tumor_mask = (tumor_mask == 2).float()
     tumor_voxels = tumor_mask.sum().item()
     if tumor_voxels == 0:
         return 0  # Avoid division by zero
-    # 提取肿瘤概率通道
-    if segmentation_output.ndim == 5:  # 带 batch 维度
+    if segmentation_output.ndim == 5:
         seg_tumor_prob = segmentation_output[:, 2, ...]
-    else:  # 无 batch 维度
+    else:
         seg_tumor_prob = segmentation_output[2, ...]
     matched_voxels = (seg_tumor_prob * tumor_mask).sum().item()
     return matched_voxels / tumor_voxels
@@ -232,15 +227,15 @@ def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer
     filtered_data = []
     filtered_target = []
 
-    for i in range(data.size(0)):  # 遍历 batch 中的每个样本
-        single_data = data[i].unsqueeze(0)  # 提取单个样本
+    for i in range(data.size(0)):
+        single_data = data[i].unsqueeze(0)
         single_target = target[i].unsqueeze(0)
 
         with torch.no_grad():
             output = model_inferer(single_data) if use_inferer else model(single_data)
             output = torch.sigmoid(output)
-            output = denoise_pred(output.detach().cpu().numpy())  # 可选的去噪操作
-            output = torch.tensor(output, device=data.device)  # 转回 Tensor
+            output = denoise_pred(output.detach().cpu().numpy())
+            output = torch.tensor(output, device=data.device)
 
             quality_proportion = calculate_quality_proportion(output, single_target)
             if quality_proportion >= threshold:
@@ -248,8 +243,7 @@ def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer
                 filtered_target.append(single_target)
 
     if len(filtered_data) == 0:
-        return None, None  # 全部样本被过滤
-    # 将过滤后的样本重新拼接成 batch
+        return None, None
     return torch.cat(filtered_data, dim=0), torch.cat(filtered_target, dim=0)
 
 

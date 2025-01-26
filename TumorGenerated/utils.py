@@ -479,47 +479,8 @@ def is_edge_point(mask_scan, potential_point, edge_op="both", neighborhood_size=
         raise ValueError("Invalid edge_op option. Choose from 'volume', 'sobel', 'any', 'both' or 'none'.")
 
 
-def get_sphere(r):
-    """
-    r is the radius of the sphere.
-    Returns a 3D numpy array representing the sphere.
-    """
-    # Create a volume that's large enough to contain the sphere
-    sh = (4 * r, 4 * r, 4 * r)
-    out = np.zeros(sh, int)
-    aux = np.zeros(sh)
-
-    # Center point of the volume
-    com = np.array([2 * r, 2 * r, 2 * r])
-
-    # Calculate the bounding box
-    bboxl = np.floor(com - r).clip(0, None).astype(int)
-    bboxh = (np.ceil(com + r) + 1).clip(None, sh).astype(int)
-
-    # Extract the region of interest (ROI)
-    roi = out[tuple(map(slice, bboxl, bboxh))]
-    roiaux = aux[tuple(map(slice, bboxl, bboxh))]
-
-    # Create a normalized grid
-    x, y, z = np.ogrid[tuple(map(slice, (bboxl - com) / r, (bboxh - com - 1) / r, 1j * (bboxh - bboxl)))]
-
-    # Calculate the distance from each point to the center
-    dst = (x ** 2 + y ** 2 + z ** 2).clip(0, None)
-
-    # Create a mask for points inside the sphere
-    mask = dst <= 1
-
-    # Set points inside the sphere to 1
-    roi[mask] = 1
-
-    # Update the auxiliary array (though not strictly necessary for a sphere)
-    np.copyto(roiaux, 1 - dst, where=mask)
-
-    return out
-
-
 # Step 2 : generate the ellipsoid
-def get_ellipsoid(x, y, z, body="ellipsoid"):
+def get_ellipsoid(x, y, z):
     """"
     x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
     """

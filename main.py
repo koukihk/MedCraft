@@ -259,7 +259,6 @@ def _get_transform(args, ellipsoid_model=None):
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
                 ),
-                # Mixup3D(keys=["image", "label"], alpha=0.4, prob=0.5),
                 transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"],
                                        spatial_size=[96, 96, 96]),
                 # transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
@@ -440,7 +439,6 @@ def main_worker(gpu, args):
     ellipsoid_model = None
     if args.ellipsoid:
         ellipsoid_model = load_ellipsoid_model()
-        model_name = 'ellipsoid'
 
     filter_model = None
     filter_inferer = None
