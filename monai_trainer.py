@@ -233,7 +233,7 @@ def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer
 
         with torch.no_grad():
             output = model_inferer(single_data) if use_inferer else model(single_data)
-            output = torch.sigmoid(output)
+            # output = torch.sigmoid(output)
             output = denoise_pred(output.detach().cpu().numpy())
             output = torch.tensor(output, device=data.device)
 
@@ -241,6 +241,8 @@ def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer
             if quality_proportion >= threshold:
                 filtered_data.append(single_data)
                 filtered_target.append(single_target)
+            else:
+                print("A data pair has been filtered out.")
 
     if len(filtered_data) == 0:
         return None, None
@@ -254,23 +256,46 @@ import time
 import numpy as np
 
 
-class MixupCutMixDataLoader:
+class MixDataLoader:
     def __init__(self, loader):
         self.loader = loader
-        self.cache_batch = None
-        self.iterator = iter(loader)
+        self.data_list = list(loader)
 
     def get_random_batch(self):
-        try:
-            if self.cache_batch is None:
-                self.cache_batch = next(self.iterator)
-            return self.cache_batch
-        except StopIteration:
-            self.iterator = iter(self.loader)
-            self.cache_batch = next(self.iterator)
-            return self.cache_batch
+        return random.choice(self.data_list)
 
-def mixup_data_with_random_batch(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
+
+def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5):
+    if np.random.rand() > cutmix_prob:
+        return data, target
+
+    random_batch = mixup_loader.get_random_batch()
+    other_data = random_batch["image"].cuda(data.device)
+    other_target = random_batch["label"].cuda(target.device)
+
+    if other_data.shape != data.shape or other_target.shape != target.shape:
+        raise ValueError("CutMix requires both batches to have the same shape.")
+
+    lam = np.random.beta(beta, beta) if beta > 0 else 1
+
+    D, H, W = data.shape[2:]
+
+    cut_d, cut_h, cut_w = int(D * np.sqrt(1 - lam)), int(H * np.sqrt(1 - lam)), int(W * np.sqrt(1 - lam))
+
+    d1, h1, w1 = np.random.randint(0, D - cut_d), np.random.randint(0, H - cut_h), np.random.randint(0, W - cut_w)
+
+    mixed_data = data.clone()
+    mixed_target = target.clone()
+
+    mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
+        other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
+
+    mixed_target[:, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
+        other_target[:, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
+
+    return mixed_data, mixed_target
+
+def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
     if random.random() > mixup_prob:
         return data, target
 
@@ -301,7 +326,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
     start_time = time.time()
     run_loss = AverageMeter()
 
-    mixup_loader = MixupCutMixDataLoader(loader)
+    mixup_loader = MixDataLoader(loader)
 
     for idx, batch_data in enumerate(loader):
         if isinstance(batch_data, list):
@@ -316,13 +341,13 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
                 data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.quality_threshold
             )
             if data is None:
-                continue  # 跳过整个 batch（所有样本都被过滤）
+                continue
 
-        if args.mixup:
-            data, target = mixup_data_with_random_batch(
+        if args.cutmix:
+            data, target = cutmix_3d(
                 data, target, mixup_loader,
-                alpha=args.mixup_alpha,
-                mixup_prob=args.mixup_prob
+                beta=args.mixup_alpha,
+                cutmix_prob=args.mixup_prob
             )
 
         for param in model.parameters():
