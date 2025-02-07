@@ -336,9 +336,9 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
 
         data, target = data.cuda(args.rank), target.cuda(args.rank)
 
-        if args.filter_tumors:
+        if args.filter:
             data, target = filter_synthetic_tumor_batch(
-                data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.quality_threshold
+                data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.filter_threshold
             )
             if data is None:
                 continue

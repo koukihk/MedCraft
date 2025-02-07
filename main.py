@@ -32,9 +32,10 @@ import argparse
 parser = argparse.ArgumentParser(description='brats21 segmentation testing')
 
 parser.add_argument('--syn', action='store_true')  # use synthetic tumors for training
-parser.add_argument('--fil_dir', default='runs/standard_all.unet', type=str)
-parser.add_argument('--filter_tumors', action='store_true', help='Enable tumor quality filtering')
-parser.add_argument('--quality_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
+parser.add_argument('--filter', action='store_true', help='Enable tumor quality filtering')
+parser.add_argument('--filter_dir', default='runs/standard_all.unet', type=str)
+parser.add_argument('--filter_name', default='unet', type=str)
+parser.add_argument('--filter_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
 parser.add_argument('--cutmix', action='store_true', help='Enable cutmix augmentation')
 parser.add_argument('--cutmix_alpha', type=float, default=0.3, help='Alpha parameter for cutmix')
 parser.add_argument('--cutmix_prob', type=float, default=0.2, help='Probability of applying cutmix')
@@ -377,7 +378,7 @@ def load_ellipsoid_model():
 
 def load_filter(args):
     inf_size = [96, 96, 96]
-    if args.model_name == 'swin_unetrv2':
+    if args.filter_name == 'swin_unetrv2':
         if args.swin_type == 'tiny':
             feature_size = 12
         elif args.swin_type == 'small':
@@ -393,7 +394,7 @@ def load_filter(args):
                                     depths=[2, 2, 2, 2],
                                     num_heads=[3, 6, 12, 24],
                                     window_size=[7, 7, 7])
-    elif args.model_name == 'unet':
+    elif args.filter_name == 'unet':
         from monai.networks.nets import UNet
         model = UNet(
             spatial_dims=3,
@@ -404,9 +405,9 @@ def load_filter(args):
             num_res_units=2,
         )
     else:
-        raise ValueError('Unsupported model ' + str(args.model_name))
+        raise ValueError('Unsupported model ' + str(args.filter_name))
 
-    checkpoint = torch.load(os.path.join(args.fil_dir, 'model.pt'), map_location='cpu')
+    checkpoint = torch.load(os.path.join(args.filter_dir, 'model.pt'), map_location='cpu')
 
     from collections import OrderedDict
     new_state_dict = OrderedDict()
@@ -445,7 +446,7 @@ def main_worker(gpu, args):
 
     filter_model = None
     filter_inferer = None
-    if args.filter_tumors:
+    if args.filter:
         filter_model, filter_inferer = load_filter(args)
 
     if args.distributed:
