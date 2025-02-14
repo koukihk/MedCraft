@@ -20,7 +20,7 @@ from monai.transforms import AsDiscrete
 from monai_trainer import AMDistributedSampler, run_training
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from tumor_analyzer import TumorAnalyzer, EllipsoidFitter
+from tumor_analyzer import EllipsoidFitter
 
 warnings.filterwarnings("ignore")
 
@@ -37,7 +37,7 @@ parser.add_argument('--filter_dir', default='runs/standard_all.unet', type=str)
 parser.add_argument('--filter_name', default='unet', type=str)
 parser.add_argument('--filter_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
 parser.add_argument('--cutmix', action='store_true', help='Enable cutmix augmentation')
-parser.add_argument('--cutmix_alpha', type=float, default=0.3, help='Alpha parameter for cutmix')
+parser.add_argument('--cutmix_beta', type=float, default=0.3, help='Beta parameter for cutmix')
 parser.add_argument('--cutmix_prob', type=float, default=0.2, help='Probability of applying cutmix')
 parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentation')
 parser.add_argument('--mixup_alpha', type=float, default=0.3, help='Alpha parameter for mixup')

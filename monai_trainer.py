@@ -295,6 +295,9 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5):
 
     return mixed_data, mixed_target
 
+def to_one_hot(labels, num_classes):
+    return torch.eye(num_classes)[labels.long()]
+
 def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
     if random.random() > mixup_prob:
         return data, target
@@ -346,8 +349,16 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
         if args.cutmix:
             data, target = cutmix_3d(
                 data, target, mixup_loader,
-                beta=args.mixup_alpha,
-                cutmix_prob=args.mixup_prob
+                beta=args.cutmix_beta,
+                cutmix_prob=args.cutmix_prob
+            )
+
+        if args.mixup:
+            target = to_one_hot(target, num_classes=3)
+            data, target = mixup_3d(
+                data, target, mixup_loader,
+                alpha=args.mixup_alpha,
+                mixup_prob=args.mixup_prob
             )
 
         for param in model.parameters():
