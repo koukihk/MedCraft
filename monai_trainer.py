@@ -250,10 +250,12 @@ def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer
 
 
 import random
-from torch.distributions import Beta
-from torch.cuda.amp import autocast
 import time
 import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.distributions import Beta
+from torch.cuda.amp import autocast
 
 
 class MixDataLoader:
@@ -270,79 +272,101 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes
         return data, target
 
     random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].cuda(data.device)
-    other_target = random_batch["label"].cuda(target.device)
+    other_data = random_batch["image"].to(data.device)
+    other_target = random_batch["label"].to(target.device)
 
     if other_data.shape != data.shape or other_target.shape != target.shape:
         raise ValueError("CutMix requires both batches to have the same shape.")
 
     lam = np.random.beta(beta, beta) if beta > 0 else 1
 
+    # 获取空间尺寸
     D, H, W = data.shape[2:]
-
-    cut_d, cut_h, cut_w = int(D * np.sqrt(1 - lam)), int(H * np.sqrt(1 - lam)), int(W * np.sqrt(1 - lam))
-
-    d1, h1, w1 = np.random.randint(0, D - cut_d), np.random.randint(0, H - cut_h), np.random.randint(0, W - cut_w)
+    # 计算裁剪区域尺寸
+    cut_d = int(D * np.sqrt(1 - lam))
+    cut_h = int(H * np.sqrt(1 - lam))
+    cut_w = int(W * np.sqrt(1 - lam))
+    # 随机选择裁剪区域起始位置，确保不会越界
+    d1 = np.random.randint(0, D - cut_d + 1)
+    h1 = np.random.randint(0, H - cut_h + 1)
+    w1 = np.random.randint(0, W - cut_w + 1)
 
     mixed_data = data.clone()
     mixed_target = target.clone()
 
+    # 对数据进行 CutMix 操作
     mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
 
-    # For CutMix, we need to handle target mixing differently
-    mixed_target[:, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
-        other_target[:, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
+    # 对标签进行 CutMix 操作（直接区域替换）
+    mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
+        other_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
 
-    # For CutMix, we can use one-hot encoding and apply lam to mix the targets
-    target_one_hot = torch.nn.functional.one_hot(target.long(), num_classes=num_classes).float()
-    other_target_one_hot = torch.nn.functional.one_hot(other_target.long(), num_classes=num_classes).float()
+    # 处理标签混合：先将标签转换为 one-hot 编码
+    target_squeezed = target.squeeze(1)
+    other_target_squeezed = other_target.squeeze(1)
+    target_one_hot = F.one_hot(target_squeezed.long(), num_classes=num_classes)
+    target_one_hot = target_one_hot.permute(0, 4, 1, 2, 3).float()
+    other_target_one_hot = F.one_hot(other_target_squeezed.long(), num_classes=num_classes)
+    other_target_one_hot = other_target_one_hot.permute(0, 4, 1, 2, 3).float()
 
     mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
 
-    # Convert back to the class indices
-    mixed_target = mixed_target_one_hot.argmax(dim=1)
+    # 转换回类别索引（保留通道维度）
+    mixed_target = mixed_target_one_hot.argmax(dim=1, keepdim=True)
 
     return mixed_data, mixed_target
 
 
 def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=3):
-    if random.random() > mixup_prob:
+    if random.random() > mixup_prob or alpha <= 0:
         return data, target
 
-    if alpha <= 0:
-        return data, target
-
-    # Sample lambda from Beta distribution
+    # 从 Beta 分布中采样 lambda
     beta_dist = Beta(alpha, alpha)
     lam = beta_dist.sample().item()
 
-    # Get random batch from cached loader
     random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].cuda(data.device)
-    other_target = random_batch["label"].cuda(target.device)
+    other_data = random_batch["image"].to(data.device)
+    other_target = random_batch["label"].to(target.device)
 
-    # Ensure shapes match
     if other_data.shape != data.shape or other_target.shape != target.shape:
         raise ValueError("Mixup requires both batches to have the same shape.")
 
-    # Convert targets to one-hot encoding
-    target_one_hot = torch.nn.functional.one_hot(target.long(), num_classes=num_classes).float()
-    other_target_one_hot = torch.nn.functional.one_hot(other_target.long(), num_classes=num_classes).float()
+    # 处理标签：去掉多余的通道维度，再转换为 one-hot 编码
+    target_squeezed = target.squeeze(1)
+    other_target_squeezed = other_target.squeeze(1)
+    target_one_hot = F.one_hot(target_squeezed.long(), num_classes=num_classes)
+    target_one_hot = target_one_hot.permute(0, 4, 1, 2, 3).float()
+    other_target_one_hot = F.one_hot(other_target_squeezed.long(), num_classes=num_classes)
+    other_target_one_hot = other_target_one_hot.permute(0, 4, 1, 2, 3).float()
 
-    # Apply Mixup to one-hot encoded labels
+    # 应用 Mixup 混合标签
     mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
+    mixed_target = mixed_target_one_hot.argmax(dim=1, keepdim=True)
 
-    # Convert back to the class indices (most likely class in one-hot encoding)
-    mixed_target = mixed_target_one_hot.argmax(dim=1)
-
-    # Apply Mixup on the data
+    # 应用 Mixup 混合数据
     mixed_data = lam * data + (1 - lam) * other_data
 
     return mixed_data, mixed_target
 
 
-def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter_model=None, filter_inferer=None):
+class SimpleAverageMeter:
+    def __init__(self):
+        self.sum = 0.0
+        self.count = 0.0
+
+    @property
+    def avg(self):
+        return self.sum / self.count if self.count != 0 else 0
+
+    def update(self, val, n=1):
+        self.sum += val * n
+        self.count += n
+
+
+def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
+                filter_model=None, filter_inferer=None):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
@@ -353,13 +377,15 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
         if isinstance(batch_data, list):
             data, target = batch_data
         else:
-            data, target = batch_data['image'], batch_data['label']
+            data, target = batch_data["image"], batch_data["label"]
 
-        data, target = data.cuda(args.rank), target.cuda(args.rank)
+        data = data.cuda(args.rank, non_blocking=True)
+        target = target.cuda(args.rank, non_blocking=True)
 
         if args.filter:
             data, target = filter_synthetic_tumor_batch(
-                data, target, filter_model, filter_inferer, use_inferer=True, threshold=args.filter_threshold
+                data, target, filter_model, filter_inferer,
+                use_inferer=True, threshold=args.filter_threshold
             )
             if data is None:
                 continue
@@ -378,8 +404,8 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
                 mixup_prob=args.mixup_prob
             )
 
-        for param in model.parameters():
-            param.grad = None
+        # 使用 optimizer.zero_grad(set_to_none=True) 进行梯度清零
+        optimizer.zero_grad(set_to_none=True)
 
         with autocast(enabled=args.amp):
             logits = model(data)
@@ -394,19 +420,27 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
             optimizer.step()
 
         if args.distributed:
-            loss_list = distributed_all_gather([loss], out_numpy=True, is_valid=idx < loader.sampler.valid_length)
-            run_loss.update(np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0),
-                            n=args.batch_size * args.world_size)
+            loss_list = distributed_all_gather(
+                [loss],
+                out_numpy=True,
+                is_valid=idx < loader.sampler.valid_length
+            )
+            loss_val = np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0)
+            run_loss.update(loss_val, n=args.batch_size * args.world_size)
         else:
             run_loss.update(loss.item(), n=args.batch_size)
 
-        if args.rank == 0:
-            print('Epoch {}/{} {}/{}'.format(epoch, args.max_epochs, idx, len(loader)),
-                  'loss: {:.4f}'.format(run_loss.avg),
-                  'time {:.2f}s'.format(time.time() - start_time))
+        # 降低日志打印频率，每 10 个 batch 打印一次
+        if args.rank == 0 and idx % 10 == 0:
+            elapsed = time.time() - start_time
+            print(
+                f"Epoch {epoch}/{args.max_epochs} {idx}/{len(loader)} "
+                f"loss: {run_loss.avg:.4f} time {elapsed:.2f}s"
+            )
         start_time = time.time()
 
     return run_loss.avg
+
 
 
 def resample(img, target_size):
