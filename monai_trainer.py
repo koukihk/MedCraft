@@ -265,7 +265,7 @@ class MixDataLoader:
         return random.choice(self.data_list)
 
 
-def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5):
+def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
     if np.random.rand() > cutmix_prob:
         return data, target
 
@@ -290,15 +290,23 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5):
     mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
 
+    # For CutMix, we need to handle target mixing differently
     mixed_target[:, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_target[:, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
 
+    # For CutMix, we can use one-hot encoding and apply lam to mix the targets
+    target_one_hot = torch.nn.functional.one_hot(target.long(), num_classes=num_classes).float()
+    other_target_one_hot = torch.nn.functional.one_hot(other_target.long(), num_classes=num_classes).float()
+
+    mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
+
+    # Convert back to the class indices
+    mixed_target = mixed_target_one_hot.argmax(dim=1)
+
     return mixed_data, mixed_target
 
-def to_one_hot(labels, num_classes):
-    return torch.eye(num_classes)[labels.long()]
 
-def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
+def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=3):
     if random.random() > mixup_prob:
         return data, target
 
@@ -318,11 +326,21 @@ def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5):
     if other_data.shape != data.shape or other_target.shape != target.shape:
         raise ValueError("Mixup requires both batches to have the same shape.")
 
-    # Apply Mixup
+    # Convert targets to one-hot encoding
+    target_one_hot = torch.nn.functional.one_hot(target.long(), num_classes=num_classes).float()
+    other_target_one_hot = torch.nn.functional.one_hot(other_target.long(), num_classes=num_classes).float()
+
+    # Apply Mixup to one-hot encoded labels
+    mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
+
+    # Convert back to the class indices (most likely class in one-hot encoding)
+    mixed_target = mixed_target_one_hot.argmax(dim=1)
+
+    # Apply Mixup on the data
     mixed_data = lam * data + (1 - lam) * other_data
-    mixed_target = lam * target + (1 - lam) * other_target
 
     return mixed_data, mixed_target
+
 
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter_model=None, filter_inferer=None):
     model.train()
@@ -354,7 +372,6 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, filter
             )
 
         if args.mixup:
-            target = to_one_hot(target, num_classes=3)
             data, target = mixup_3d(
                 data, target, mixup_loader,
                 alpha=args.mixup_alpha,
