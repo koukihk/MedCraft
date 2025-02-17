@@ -6,10 +6,9 @@ import elasticdeform
 import numpy as np
 import pywt
 from noise import snoise3
-from scipy.ndimage import gaussian_filter, sobel
+from scipy.ndimage import gaussian_filter, sobel, gaussian_filter1d
 from skimage.restoration import denoise_tv_chambolle
 
-sobel_cache = {}
 
 def generate_complex_noise(mask_shape, scale=10):
     a = np.zeros(mask_shape)
@@ -90,109 +89,52 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
 
     return Bj
 
-def get_predefined_texture_O(mask_shape, sigma_a, sigma_b):
-    simplex_scale = int(np.random.uniform(4, 8))
-    a = generate_complex_noise(mask_shape, simplex_scale)
-    a_2 = gaussian_filter(a, sigma=sigma_a)
-    scale = np.random.uniform(0.19, 0.21)
-    base = np.random.uniform(0.04, 0.06)
-    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
 
-    # sample once
-    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
-    b = gaussian_filter(b, sigma_b)
-
-    # Scaling and clipping
-    u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
-    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
-
-    return Bj
-
-def get_predefined_texture_A(mask_shape, sigma_a, sigma_b):
-    # Step 1: Uniform noise generation with larger range for higher contrast
-    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-
-    # Step 2: Apply Gaussian filter to smoothen the noise
-    a_2 = gaussian_filter(a, sigma=sigma_a)
-
-    # Step 3: Scale and normalize the filtered noise
-    scale = np.random.uniform(0.19, 0.21)
-    base = np.random.uniform(0.04, 0.06)
-    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
-
-    # Step 4: Add localized random noise for heterogeneity
-    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    b = (a > random_sample).astype(float)
-
-    # Step 5: Apply Gaussian filter to smooth the binary noise
-    b = gaussian_filter(b, sigma_b)
-
-    # Step 6: Scaling and clipping for realistic intensity adjustment
-    u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12
-    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta * b, 0, 1)
-
-    # Step 7: Local texture enhancement (using wavelet)
-    # Apply wavelet transform to add finer texture details in different frequency bands
-    coeffs = pywt.wavedec2(Bj, wavelet='db4', level=2)
-    coeffs[1] = tuple(0.4 * v for v in coeffs[1])  # Retain some high-frequency details
-    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]  # Discard very high frequency noise
-    Bj_wavelet = pywt.waverec2(coeffs, wavelet='db4')
-
-    # Normalize back to 0-1 range
-    Bj_wavelet = (Bj_wavelet - np.min(Bj_wavelet)) / (np.max(Bj_wavelet) - np.min(Bj_wavelet))
-
-    # Step 8: Optional contrast enhancement (adaptive)
-    contrast_adjusted_Bj = np.clip(Bj_wavelet * np.random.uniform(1.1, 1.3), 0, 1)
-
-    return contrast_adjusted_Bj
-
-
-# here we want to get predefined texutre:
-def get_predefined_texture_B(mask_shape, sigma_a, sigma_b):
-    # Step 1: Uniform noise generate
-    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    # a = generate_simplex_noise(mask_shape, 0.5)
+def get_predefined_texture_b(mask_shape, sigma_a, sigma_b):
+    # Step 1: Uniform noise generation
+    a = np.random.uniform(0, 1, size=mask_shape).astype(np.float32)
 
     # Step 2: Nonlinear diffusion filtering
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
 
-    # Step 3: Wavelet transform
-    coeffs = pywt.wavedec2(a_denoised, wavelet='db4', level=2)
-    coeffs[1] = tuple(0.3 * v for v in coeffs[1])  # 保留一些高频细节
-    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]
-    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='db4')
+    # Step 3: 3D Wavelet transform
+    coeffs = pywt.wavedecn(a_denoised, wavelet='db4', level=2)
+    coeffs[1] = {k: 0.3 * v for k, v in coeffs[1].items()}  # 只保留低层高频信息
+    for i in range(2, len(coeffs)):  # 直接遍历后续层，避免创建额外变量
+        coeffs[i] = {k: np.zeros_like(v) for k, v in coeffs[i].items()}
+    a_wavelet_denoised = pywt.waverecn(coeffs, wavelet='db4')
 
     # Normalize to 0-1
-    a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (
-            np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
+    min_val, max_val = np.min(a_wavelet_denoised), np.max(a_wavelet_denoised)
+    a_wavelet_denoised = (a_wavelet_denoised - min_val) / (max_val - min_val + 1e-6)  # 避免除0错误
 
-    # Step 4: Gaussian filter
-    # a_2 = gaussian_filter(a, sigma=sigma_a)
-    a_2 = gaussian_filter(a_wavelet_denoised, sigma=sigma_a)
+    # Step 4: Optimized Gaussian filter (using separable filtering)
+    a_2 = a_wavelet_denoised
+    for ax in range(3):  # 分别沿 x, y, z 方向滤波，减少计算量
+        a_2 = gaussian_filter1d(a_2, sigma=sigma_a, axis=ax, mode='nearest')
 
     scale = np.random.uniform(0.19, 0.21)
     base = np.random.uniform(0.04, 0.06)
-    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2) + 1e-6) + base
 
-    # sample once
-    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
-    b = gaussian_filter(b, sigma_b)
+    # Sample once
+    random_sample = np.random.uniform(0, 1, size=mask_shape).astype(np.float32)
+    b = (a > random_sample).astype(np.float32)
+
+    # Apply Gaussian filter using separable filtering
+    for ax in range(3):
+        b = gaussian_filter1d(b, sigma=sigma_b, axis=ax, mode='nearest')
 
     # Scaling and clipping
     u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
-    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
+    threshold_mask = b > 0.12
+    threshold_sum = np.sum(threshold_mask)
+    beta = u_0 / (np.sum(b * threshold_mask) / (threshold_sum + 1e-6))  # 避免除 0
+    Bj = np.clip(beta * b, 0, 1)
 
     return Bj
 
-def get_predefined_texture_C(mask_shape, sigma_a, sigma_b):
+def get_predefined_texture_c(mask_shape, sigma_a, sigma_b):
     # Step 1: Complex noise generation (e.g., Simplex noise)
     simplex_scale = int(np.random.uniform(5, 9))
     a = generate_complex_noise(mask_shape, simplex_scale)
@@ -315,45 +257,33 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op=
     return potential_point
 
 
-def get_sobel_cache(mask_scan):
-    # 如果缓存不存在，计算并保存
-    if 'sobel_x' not in sobel_cache:
-        sobel_cache['sobel_x'] = sobel(mask_scan, axis=0)
-    if 'sobel_y' not in sobel_cache:
-        sobel_cache['sobel_y'] = sobel(mask_scan, axis=1)
-    if 'sobel_z' not in sobel_cache:
-        sobel_cache['sobel_z'] = sobel(mask_scan, axis=2)
-
-def check_sobel(mask_scan, potential_point, sobel_threshold=405, sobel_neighborhood_size=(9, 9, 9)):
-    get_sobel_cache(mask_scan)
-
-    # 仅计算潜在点附近的小区域的梯度
+def check_sobel(mask_scan, potential_point, sobel_threshold=405, sobel_neighborhood_size=(7, 7, 7)):
+    # Calculate the neighborhood bounds, ensuring it stays within the mask scan limits
     min_bounds = np.maximum(potential_point - np.array(sobel_neighborhood_size) // 2, 0)
     max_bounds = np.minimum(potential_point + np.array(sobel_neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
 
-    # 提取梯度图的小范围
-    sobel_x = sobel_cache['sobel_x'][min_bounds[0]:max_bounds[0] + 1,
-                                      min_bounds[1]:max_bounds[1] + 1,
-                                      min_bounds[2]:max_bounds[2] + 1]
-    sobel_y = sobel_cache['sobel_y'][min_bounds[0]:max_bounds[0] + 1,
-                                      min_bounds[1]:max_bounds[1] + 1,
-                                      min_bounds[2]:max_bounds[2] + 1]
-    sobel_z = sobel_cache['sobel_z'][min_bounds[0]:max_bounds[0] + 1,
-                                      min_bounds[1]:max_bounds[1] + 1,
-                                      min_bounds[2]:max_bounds[2] + 1]
+    # Extract the neighborhood sub-region
+    neighborhood_sn = mask_scan[min_bounds[0]:max_bounds[0] + 1,
+                                min_bounds[1]:max_bounds[1] + 1,
+                                min_bounds[2]:max_bounds[2] + 1]
 
-    # 计算梯度的大小
-    gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2 + sobel_z ** 2)
+    # Compute Sobel filters only on the neighborhood region
+    sobel_x = sobel(neighborhood_sn, axis=0)
+    sobel_y = sobel(neighborhood_sn, axis=1)
+    sobel_z = sobel(neighborhood_sn, axis=2)
 
-    # 判断潜在点的梯度值
-    gradient_value = gradient_magnitude[tuple(potential_point - np.array([min_bounds[0], min_bounds[1], min_bounds[2]]))]
+    # Calculate the gradient magnitude of the Sobel filter
+    gradient_magnitude = np.sqrt(sobel_x**2 + sobel_y**2 + sobel_z**2)
 
-    # 返回是否为边缘点
+    # Get the gradient magnitude at the central point of the neighborhood
+    central_point = np.array(sobel_neighborhood_size) // 2
+    gradient_value = gradient_magnitude[tuple(central_point)]
+
+    # Return True if the gradient magnitude exceeds the threshold
     return gradient_value > sobel_threshold
 
 def is_edge_point(mask_scan, potential_point, edge_op="both", neighborhood_size=(3, 3, 3), volume_threshold=5,
                   sobel_threshold=405):
-    # 定义体积检测方法
     def check_volume():
         # Define the boundaries of the neighborhood around the potential point
         min_bounds = np.maximum(potential_point - np.array(neighborhood_size) // 2, 0)

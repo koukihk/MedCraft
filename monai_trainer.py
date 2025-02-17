@@ -442,7 +442,6 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
     return run_loss.avg
 
 
-
 def resample(img, target_size):
     imx, imy, imz = img.shape
     tx, ty, tz = target_size

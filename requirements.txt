@@ -16,7 +16,6 @@ pandas
 glob2
 setuptools~=68.0.0
 scikit-learn~=1.3.2
-MedPy~=0.4.0
 scikit-image~=0.18.3
 plotly~=5.22.0
 joblib~=1.3.2
