@@ -6,11 +6,10 @@ import elasticdeform
 import numpy as np
 import pywt
 from noise import snoise3
-from scipy.ndimage import gaussian_filter, median_filter, sobel
+from scipy.ndimage import gaussian_filter, sobel
 from skimage.restoration import denoise_tv_chambolle
-from skimage import exposure
-from skimage.filters import gabor
 
+sobel_cache = {}
 
 def generate_complex_noise(mask_shape, scale=10):
     a = np.zeros(mask_shape)
@@ -22,44 +21,6 @@ def generate_complex_noise(mask_shape, scale=10):
     # Normalize to 0-1 range
     a = (a - np.min(a)) / (np.max(a) - np.min(a))
     return a
-
-
-def enhance_contrast(image):
-    # Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
-    enhanced_image = exposure.equalize_adapthist(image, clip_limit=0.03)
-    return enhanced_image
-
-
-def apply_gabor_filter(image):
-    # Apply Gabor filter with different frequencies and angles
-    filtered_real, filtered_imag = gabor(image, frequency=0.6)
-
-    # Combine the real and imaginary parts to get the final filtered image
-    gabor_filtered = np.sqrt(filtered_real ** 2 + filtered_imag ** 2)
-
-    return gabor_filtered
-
-def add_salt_and_pepper_noise(image, salt_prob, pepper_prob, median_filter_size=3):
-    noisy_image = np.copy(image.astype(float))
-
-    salt_value = noisy_image.max()
-    pepper_value = noisy_image.min()
-
-    num_salt = np.ceil(salt_prob * noisy_image.size)
-    num_pepper = np.ceil(pepper_prob * noisy_image.size)
-
-    # Generate salt noise coordinates
-    salt_coords = [np.random.randint(0, dim, int(num_salt)) for dim in noisy_image.shape]
-    noisy_image[tuple(salt_coords)] = salt_value
-
-    # Generate pepper noise coordinates
-    pepper_coords = [np.random.randint(0, dim, int(num_pepper)) for dim in noisy_image.shape]
-    noisy_image[tuple(pepper_coords)] = pepper_value
-
-    # Apply median filter to the noisy image
-    noisy_image = median_filter(noisy_image, size=median_filter_size)
-
-    return noisy_image
 
 
 def generate_prob_function(mask_shape):
@@ -270,43 +231,6 @@ def get_predefined_texture_C(mask_shape, sigma_a, sigma_b):
 
     return Bj
 
-def get_predefined_texture_D(mask_shape, sigma_a, sigma_b):
-    # Step 1: Complex noise generation (e.g., Simplex noise)
-    simplex_scale = int(np.random.uniform(2, 6))
-    a = generate_complex_noise(mask_shape, simplex_scale)
-
-    # Step 2: Nonlinear diffusion filtering with adaptive contrast enhancement
-    a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
-    a_enhanced = enhance_contrast(a_denoised)
-
-    # Step 3: Multi-level wavelet transform with high-frequency detail preservation
-    coeffs = pywt.wavedec2(a_enhanced, wavelet='db4', level=3)
-    coeffs[1] = tuple(0.5 * v for v in coeffs[1])  # Retain more high-frequency details
-    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]
-    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='db4')
-
-    # Step 4: Apply Gabor filtering or directional filtering for anisotropy
-    a_gabor = apply_gabor_filter(a_wavelet_denoised)
-
-    # Normalize to 0-1
-    a_normalized = (a_gabor - np.min(a_gabor)) / (np.max(a_gabor) - np.min(a_gabor))
-
-    # Step 5: Gaussian filter
-    a_2 = gaussian_filter(a_normalized, sigma=sigma_a)
-
-    # Introduce more randomness and anisotropy
-    random_sample = np.random.uniform(0, 1, size=mask_shape)
-    b = (a_2 > random_sample).astype(float)
-    b = gaussian_filter(b, sigma_b)
-
-    # Scaling and clipping
-    u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12
-    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta * b, 0, 1)
-
-    return Bj
-
 # Step 1: Random select (numbers) location for tumor.
 def random_select(mask_scan):
     # we first find z index and then sample point with z slice
@@ -344,45 +268,6 @@ def get_absolute_coordinate(relative_coordinate, original_shape, target_volume, 
     absolute_z += start[2]
 
     return np.array([absolute_x, absolute_y, absolute_z], dtype=float)
-
-
-def gmm_select(mask_scan, gmm_model=None, max_attempts=600, edge_op="volume"):
-    if gmm_model is None:
-        potential_point = random_select(mask_scan)
-        return potential_point
-    # for speed_generate_tumor, we only send the liver part into the generate program
-    x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
-    y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
-    z_start, z_end = np.where(np.any(mask_scan, axis=(0, 1)))[0][[0, -1]]
-
-    # shrink the boundary
-    x_start, x_end = max(0, x_start + 1), min(mask_scan.shape[0], x_end - 1)
-    y_start, y_end = max(0, y_start + 1), min(mask_scan.shape[1], y_end - 1)
-    z_start, z_end = max(0, z_start + 1), min(mask_scan.shape[2], z_end - 1)
-
-    liver_mask = mask_scan[x_start:x_end, y_start:y_end, z_start:z_end]
-    target_volume = (282, 244, 143)
-    start = (x_start, y_start, z_start)
-
-    loop_count = 0
-    while loop_count < max_attempts:
-        potential_point = gmm_model.sample(1)[0][0]
-        if any(coord < 0 for coord in potential_point):
-            loop_count += 1
-            continue
-        potential_point = get_absolute_coordinate(potential_point, liver_mask.shape, target_volume, start)
-        potential_point = np.clip(potential_point, 0, np.array(mask_scan.shape) - 1).astype(int)
-
-        if mask_scan[tuple(potential_point)] == 1:
-            # Check if the point is not at the edge
-            if not is_edge_point(mask_scan, potential_point, edge_op):
-                return potential_point
-
-        loop_count += 1
-
-    potential_point = random_select(mask_scan)
-    return potential_point
-
 
 def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="both"):
     def is_within_middle_z_range(point, z_start, z_end):
@@ -430,6 +315,42 @@ def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op=
     return potential_point
 
 
+def get_sobel_cache(mask_scan):
+    # 如果缓存不存在，计算并保存
+    if 'sobel_x' not in sobel_cache:
+        sobel_cache['sobel_x'] = sobel(mask_scan, axis=0)
+    if 'sobel_y' not in sobel_cache:
+        sobel_cache['sobel_y'] = sobel(mask_scan, axis=1)
+    if 'sobel_z' not in sobel_cache:
+        sobel_cache['sobel_z'] = sobel(mask_scan, axis=2)
+
+def check_sobel(mask_scan, potential_point, sobel_threshold=405, sobel_neighborhood_size=(9, 9, 9)):
+    get_sobel_cache(mask_scan)
+
+    # 仅计算潜在点附近的小区域的梯度
+    min_bounds = np.maximum(potential_point - np.array(sobel_neighborhood_size) // 2, 0)
+    max_bounds = np.minimum(potential_point + np.array(sobel_neighborhood_size) // 2, np.array(mask_scan.shape) - 1)
+
+    # 提取梯度图的小范围
+    sobel_x = sobel_cache['sobel_x'][min_bounds[0]:max_bounds[0] + 1,
+                                      min_bounds[1]:max_bounds[1] + 1,
+                                      min_bounds[2]:max_bounds[2] + 1]
+    sobel_y = sobel_cache['sobel_y'][min_bounds[0]:max_bounds[0] + 1,
+                                      min_bounds[1]:max_bounds[1] + 1,
+                                      min_bounds[2]:max_bounds[2] + 1]
+    sobel_z = sobel_cache['sobel_z'][min_bounds[0]:max_bounds[0] + 1,
+                                      min_bounds[1]:max_bounds[1] + 1,
+                                      min_bounds[2]:max_bounds[2] + 1]
+
+    # 计算梯度的大小
+    gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2 + sobel_z ** 2)
+
+    # 判断潜在点的梯度值
+    gradient_value = gradient_magnitude[tuple(potential_point - np.array([min_bounds[0], min_bounds[1], min_bounds[2]]))]
+
+    # 返回是否为边缘点
+    return gradient_value > sobel_threshold
+
 def is_edge_point(mask_scan, potential_point, edge_op="both", neighborhood_size=(3, 3, 3), volume_threshold=5,
                   sobel_threshold=405):
     # 定义体积检测方法
@@ -449,30 +370,15 @@ def is_edge_point(mask_scan, potential_point, edge_op="both", neighborhood_size=
         # Check if the liver voxel count is below the threshold
         return liver_voxel_count < volume_threshold
 
-    # 定义Sobel检测方法
-    def check_sobel():
-        # Apply Sobel filter to detect edges
-        sobel_x = sobel(mask_scan, axis=0)
-        sobel_y = sobel(mask_scan, axis=1)
-        sobel_z = sobel(mask_scan, axis=2)
-
-        # Calculate the magnitude of the gradient
-        gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2 + sobel_z ** 2)
-
-        # Determine if the potential point is near an edge
-        gradient_value = gradient_magnitude[tuple(potential_point)]
-
-        return gradient_value > sobel_threshold
-
     # 根据选择的操作模式判断是否为边缘点
     if edge_op == "volume":
         return check_volume()
     elif edge_op == "sobel":
-        return check_sobel()
+        return check_sobel(mask_scan, potential_point, sobel_threshold)
     elif edge_op == "any":
-        return check_volume() and check_sobel()
+        return check_volume() and check_sobel(mask_scan, potential_point, sobel_threshold)
     elif edge_op == "both":
-        return check_volume() or check_sobel()
+        return check_volume() or check_sobel(mask_scan, potential_point, sobel_threshold)
     elif edge_op == "none":
         return False
     else:
@@ -525,7 +431,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 1))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -549,7 +455,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -574,7 +480,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -599,7 +505,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -624,7 +530,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 1))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -648,7 +554,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -673,7 +579,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
@@ -697,7 +603,7 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(1, 2))
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 2))
             # texture = get_texture((4*x, 4*y, 4*z))
-            point = ellipsoid_select(mask_scan, ellipsoid_model)
+            point = ellipsoid_select(mask_scan, ellipsoid_model) if ellipsoid_model is not None else random_select(mask_scan)
 
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
             x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2

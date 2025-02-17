@@ -6,7 +6,7 @@ from monai.config import KeysCollection
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
-from .utils import (SynthesisTumor, get_predefined_texture_B)
+from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_B)
 
 Organ_List = {'liver': [1, 2], 'pancreas': [1, 2], 'kidney': [1, 2]}
 Organ_HU = {'liver': [100, 160], 'pancreas': [100, 160], 'kidney': [140, 200]}

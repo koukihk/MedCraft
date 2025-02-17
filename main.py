@@ -425,20 +425,6 @@ def load_filter(args):
     )
     return model, model_inferer
 
-def extend_datalist(datalist):
-    new_datalist = []
-    for i in range(len(datalist)):
-        for j in range(len(datalist)):
-            if i != j:
-                new_item = {
-                    "image": datalist[i]["image"],
-                    "label": datalist[i]["label"],
-                    "mix_image": datalist[j]["image"],
-                    "mix_label": datalist[j]["label"]
-                }
-                new_datalist.append(new_item)
-    return new_datalist
-
 def main_worker(gpu, args):
     ellipsoid_model = None
     if args.ellipsoid:
