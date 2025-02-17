@@ -1,7 +1,6 @@
 import os
 import warnings
 from functools import partial
-from os import environ
 
 import nibabel as nb
 import numpy as np
@@ -175,11 +174,6 @@ def optuna_objective(trial, args):
             accuracy += main_worker(gpu=0, args=args)
         accuracy = accuracy / 5.0
 
-    # trial.report(accuracy, epoch)
-    # # Handle pruning based on the intermediate value.
-    # if trial.should_prune():
-    #     raise optuna.exceptions.TrialPruned()
-
     return accuracy
 
 
@@ -225,9 +219,7 @@ def optuna_run(args):
         load_if_exists=True)
     #
     callbacks = []
-    if args.logdir is not None:
-        from optuna_tensorboard import TensorBoardPTCallback
-        callbacks.append(TensorBoardPTCallback())
+
     study.optimize(objective, callbacks=callbacks, gc_after_trial=True)
     # study.optimize(objective, gc_after_trial=True)
 
@@ -265,8 +257,6 @@ def _get_transform(args, ellipsoid_model=None):
                 ),
                 transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"],
                                        spatial_size=[96, 96, 96]),
-                # transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
-                # transforms.RandSpatialCropd(keys=["image", "label"], roi_size=roi_size, random_size=False),
                 transforms.RandCropByPosNegLabeld(
                     keys=["image", "label"],
                     label_key="label",
@@ -281,7 +271,6 @@ def _get_transform(args, ellipsoid_model=None):
                 transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
                 transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2),
                 transforms.RandRotate90d(keys=["image", "label"], prob=0.2, max_k=3),
-                #             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
                 transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=0.15),
                 transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=0.15),
                 transforms.ToTensord(keys=["image", "label"]),
@@ -300,8 +289,6 @@ def _get_transform(args, ellipsoid_model=None):
                 b_min=0.0, b_max=1.0, clip=True,
             ),
             transforms.SpatialPadd(keys=["image", "label"], mode=["minimum", "constant"], spatial_size=[96, 96, 96]),
-    #             transforms.CropForegroundd(keys=["image", "label"], source_key="image", k_divisible=roi_size),
-    #             transforms.RandSpatialCropd(keys=["image", "label"], roi_size=roi_size, random_size=False),
             transforms.RandCropByPosNegLabeld(
                 keys=["image", "label"],
                 label_key="label",
@@ -316,7 +303,6 @@ def _get_transform(args, ellipsoid_model=None):
             transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
             transforms.RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2),
             transforms.RandRotate90d(keys=["image", "label"], prob=0.2, max_k=3),
-    #             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=0.15),
             transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=0.15),
             transforms.ToTensord(keys=["image", "label"]),
@@ -326,8 +312,6 @@ def _get_transform(args, ellipsoid_model=None):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
-            #             transforms.ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
-            #             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             transforms.AddChanneld(keys=["image", "label"]),
             transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
             transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0), mode=("bilinear", "nearest")),
@@ -456,17 +440,11 @@ def main_worker(gpu, args):
 
     roi_size = [args.roi_x, args.roi_y, args.roi_x]
     inf_size = [args.roi_x, args.roi_y, args.roi_x]
-    num_blocks = list(map(int, args.seg_num_blocks.split(',')))
 
     data_dir = args.train_dir
     val_data_dir = args.val_dir
 
     datalist_json = args.json_dir
-
-    if environ.get('NGC_JOB_ID') is None:
-        root_dir = '/data/tmp/brats2021challenge'  # my local folder, change to yours
-    else:
-        root_dir = '../../../dataset/dataset3'  # on ngc mount data to this folder
 
     train_transform, val_transform = _get_transform(args, ellipsoid_model)
 
@@ -568,10 +546,6 @@ def main_worker(gpu, args):
         imgnb = nb.load(imagepath)
         val_shape_dict[imagename] = [imgnb.shape[0], imgnb.shape[1], imgnb.shape[2]]
     print('Totoal number of validation: {}'.format(len(val_shape_dict)))
-
-    if args.quick:
-        train_files = train_files[:4]
-        validation_files = validation_files[:3]
 
     print('train_files files', len(new_datalist), 'validation files', len(new_val_files))
 

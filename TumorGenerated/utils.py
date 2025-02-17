@@ -212,16 +212,6 @@ def get_absolute_coordinate(relative_coordinate, original_shape, target_volume, 
     return np.array([absolute_x, absolute_y, absolute_z], dtype=float)
 
 def ellipsoid_select(mask_scan, ellipsoid_model=None, max_attempts=600, edge_op="both"):
-    def is_within_middle_z_range(point, z_start, z_end):
-        z_length = z_end - z_start
-        lower_bound = z_start + 0.3 * z_length
-        upper_bound = z_start + 0.7 * z_length
-        return lower_bound <= point[2] <= upper_bound
-
-    if ellipsoid_model is None:
-        potential_point = random_select(mask_scan)
-        return potential_point
-
     # for speed_generate_tumor, we only send the liver part into the generate program
     x_start, x_end = np.where(np.any(mask_scan, axis=(1, 2)))[0][[0, -1]]
     y_start, y_end = np.where(np.any(mask_scan, axis=(0, 2)))[0][[0, -1]]
