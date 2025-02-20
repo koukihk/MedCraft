@@ -3,11 +3,7 @@ import os
 import shutil
 import sys
 
-# import tempfile
-# import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
-# import json
-import torch
 import torch.distributed as dist
 import torch.nn.parallel
 import torch.utils.data.distributed
@@ -170,84 +166,6 @@ class AverageMeter(object):
         # self.avg = self.sum / self.count if self.count > 0 else self.sum
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
-import numpy as np
-from scipy.ndimage import label
-
-def denoise_pred(pred: np.ndarray):
-    """
-    # pred.shape can be either (3, H, W, D) or (batch_size, 3, H, W, D)
-    # 0: background, 1: liver, 2: tumor.
-    """
-    if pred.ndim == 4:
-        return denoise_single_sample(pred)
-    elif pred.ndim == 5:
-        batch_denoised = np.zeros_like(pred)
-        for i in range(pred.shape[0]):
-            batch_denoised[i, ...] = denoise_single_sample(pred[i, ...])
-        return batch_denoised
-    else:
-        raise ValueError(f"Unexpected input dimensions: {pred.shape}")
-
-def denoise_single_sample(pred: np.ndarray):
-    denoise_pred = np.zeros_like(pred)
-
-    live_channel = pred[1, ...]
-    labels, nb = label(live_channel)
-    max_sum = -1
-    choice_idx = -1
-    for idx in range(1, nb + 1):
-        component = (labels == idx)
-        if np.sum(component) > max_sum:
-            choice_idx = idx
-            max_sum = np.sum(component)
-    component = (labels == choice_idx)
-    denoise_pred[1, ...] = component
-
-    liver_dilation = ndimage.binary_dilation(denoise_pred[1, ...], iterations=30).astype(bool)
-    denoise_pred[2, ...] = pred[2, ...].astype(bool) * liver_dilation
-
-    denoise_pred[0, ...] = 1 - np.logical_or(denoise_pred[1, ...], denoise_pred[2, ...])
-
-    return denoise_pred
-
-def calculate_quality_proportion(segmentation_output, tumor_mask):
-    tumor_mask = (tumor_mask == 2).float()
-    tumor_voxels = tumor_mask.sum().item()
-    if tumor_voxels == 0:
-        return 0  # Avoid division by zero
-    if segmentation_output.ndim == 5:
-        seg_tumor_prob = segmentation_output[:, 2, ...]
-    else:
-        seg_tumor_prob = segmentation_output[2, ...]
-    matched_voxels = (seg_tumor_prob * tumor_mask).sum().item()
-    return matched_voxels / tumor_voxels
-
-
-def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer, threshold=0.5):
-    filtered_data = []
-    filtered_target = []
-
-    for i in range(data.size(0)):
-        single_data = data[i].unsqueeze(0)
-        single_target = target[i].unsqueeze(0)
-
-        with torch.no_grad():
-            output = model_inferer(single_data) if use_inferer else model(single_data)
-            # output = torch.sigmoid(output)
-            output = denoise_pred(output.detach().cpu().numpy())
-            output = torch.tensor(output, device=data.device)
-
-            quality_proportion = calculate_quality_proportion(output, single_target)
-            if quality_proportion >= threshold:
-                filtered_data.append(single_data)
-                filtered_target.append(single_target)
-            else:
-                print("A data pair has been filtered out.")
-
-    if len(filtered_data) == 0:
-        return None, None
-    return torch.cat(filtered_data, dim=0), torch.cat(filtered_target, dim=0)
-
 
 import random
 import time
@@ -280,13 +198,10 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes
 
     lam = np.random.beta(beta, beta) if beta > 0 else 1
 
-    # 获取空间尺寸
     D, H, W = data.shape[2:]
-    # 计算裁剪区域尺寸
     cut_d = int(D * np.sqrt(1 - lam))
     cut_h = int(H * np.sqrt(1 - lam))
     cut_w = int(W * np.sqrt(1 - lam))
-    # 随机选择裁剪区域起始位置，确保不会越界
     d1 = np.random.randint(0, D - cut_d + 1)
     h1 = np.random.randint(0, H - cut_h + 1)
     w1 = np.random.randint(0, W - cut_w + 1)
@@ -294,15 +209,12 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes
     mixed_data = data.clone()
     mixed_target = target.clone()
 
-    # 对数据进行 CutMix 操作
     mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
 
-    # 对标签进行 CutMix 操作（直接区域替换）
     mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
 
-    # 处理标签混合：先将标签转换为 one-hot 编码
     target_squeezed = target.squeeze(1)
     other_target_squeezed = other_target.squeeze(1)
     target_one_hot = F.one_hot(target_squeezed.long(), num_classes=num_classes)
@@ -312,7 +224,6 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes
 
     mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
 
-    # 转换回类别索引（保留通道维度）
     mixed_target = mixed_target_one_hot.argmax(dim=1, keepdim=True)
 
     return mixed_data, mixed_target
@@ -322,7 +233,6 @@ def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=
     if random.random() > mixup_prob or alpha <= 0:
         return data, target
 
-    # 从 Beta 分布中采样 lambda
     beta_dist = Beta(alpha, alpha)
     lam = beta_dist.sample().item()
 
@@ -333,7 +243,6 @@ def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=
     if other_data.shape != data.shape or other_target.shape != target.shape:
         raise ValueError("Mixup requires both batches to have the same shape.")
 
-    # 处理标签：去掉多余的通道维度，再转换为 one-hot 编码
     target_squeezed = target.squeeze(1)
     other_target_squeezed = other_target.squeeze(1)
     target_one_hot = F.one_hot(target_squeezed.long(), num_classes=num_classes)
@@ -341,11 +250,9 @@ def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=
     other_target_one_hot = F.one_hot(other_target_squeezed.long(), num_classes=num_classes)
     other_target_one_hot = other_target_one_hot.permute(0, 4, 1, 2, 3).float()
 
-    # 应用 Mixup 混合标签
     mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
     mixed_target = mixed_target_one_hot.argmax(dim=1, keepdim=True)
 
-    # 应用 Mixup 混合数据
     mixed_data = lam * data + (1 - lam) * other_data
 
     return mixed_data, mixed_target
@@ -382,14 +289,6 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
         data = data.cuda(args.rank, non_blocking=True)
         target = target.cuda(args.rank, non_blocking=True)
 
-        if args.filter:
-            data, target = filter_synthetic_tumor_batch(
-                data, target, filter_model, filter_inferer,
-                use_inferer=True, threshold=args.filter_threshold
-            )
-            if data is None:
-                continue
-
         if args.cutmix:
             data, target = cutmix_3d(
                 data, target, mixup_loader,
@@ -404,7 +303,6 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
                 mixup_prob=args.mixup_prob
             )
 
-        # 使用 optimizer.zero_grad(set_to_none=True) 进行梯度清零
         optimizer.zero_grad(set_to_none=True)
 
         with autocast(enabled=args.amp):
@@ -430,7 +328,6 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
         else:
             run_loss.update(loss.item(), n=args.batch_size)
 
-        # 降低日志打印频率，每 10 个 batch 打印一次
         if args.rank == 0 and idx % 10 == 0:
             elapsed = time.time() - start_time
             print(
@@ -459,8 +356,7 @@ def dice(x, y):
     return 2 * intersect / (x_sum + y_sum)
 
 
-def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_inferer=None, post_label=None,
-              post_pred=None):
+def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_inferer=None):
     model.eval()
     start_time = time.time()
     run_loss = AverageMeter()
@@ -572,8 +468,6 @@ def run_training(model,
                  scheduler=None,
                  start_epoch=0,
                  val_channel_names=None,
-                 post_label=None,
-                 post_pred=None,
                  filter_model=None,
                  filter_inferer=None
                  ):
@@ -619,8 +513,7 @@ def run_training(model,
             epoch_time = time.time()
             # torch.cuda.empty_cache()
             val_loss, val_acc = val_epoch(model, val_loader, val_shape_dict, epoch=epoch, loss_func=loss_func,
-                                          model_inferer=model_inferer, args=args, post_label=post_label,
-                                          post_pred=post_pred)
+                                          model_inferer=model_inferer, args=args)
             if args.rank == 0:
                 print('Final validation  {}/{}'.format(epoch, args.max_epochs - 1), 'loss: {:.4f}'.format(val_loss),
                       'acc', val_acc, 'time {:.2f}s'.format(time.time() - epoch_time))

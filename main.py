@@ -12,7 +12,6 @@ import torch.utils.data.distributed
 from monai import transforms, data
 from monai.data import load_decathlon_datalist
 from monai.inferers import sliding_window_inference
-# from monai.data import DataLoader, Dataset
 from monai.losses import DiceCELoss
 from monai.transforms import AsDiscrete
 
@@ -42,7 +41,6 @@ parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentat
 parser.add_argument('--mixup_alpha', type=float, default=0.3, help='Alpha parameter for mixup')
 parser.add_argument('--mixup_prob', type=float, default=0.2, help='Probability of applying mixup')
 parser.add_argument('--ellipsoid', action='store_true')
-# parser.add_argument('--fold', default=0, type=int)
 parser.add_argument('--checkpoint', default=None)
 parser.add_argument('--logdir', default=None)
 parser.add_argument('--save_checkpoint', action='store_true')
@@ -639,8 +637,6 @@ def main_worker(gpu, args):
                             start_epoch=start_epoch,
                             val_channel_names=val_channel_names,
                             val_shape_dict=val_shape_dict,
-                            post_label=post_label,
-                            post_pred=post_pred,
                             filter_model=filter_model,
                             filter_inferer=filter_inferer)
 
