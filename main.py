@@ -23,7 +23,7 @@ from tumor_analyzer import EllipsoidFitter
 warnings.filterwarnings("ignore")
 
 ## Online Tumor Generation
-from TumorGenerated import TumorGenerated
+from TumorGenerated import TumorGenerated, TumorFilter
 
 import argparse
 
@@ -239,7 +239,7 @@ def optuna_run(args):
         print("    {}: {}".format(key, value))
 
 
-def _get_transform(args, ellipsoid_model=None):
+def _get_transform(args, ellipsoid_model=None, filter_model=None, filter_inferer=None):
     if args.syn:
         train_transform = transforms.Compose(
             [
@@ -249,6 +249,7 @@ def _get_transform(args, ellipsoid_model=None):
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
                                     mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, ellipsoid_model=ellipsoid_model),
+                TumorFilter(model=filter_model, model_inferer=filter_inferer, use_inferer=True, threshold=0.5),  # Inserted here
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -444,7 +445,7 @@ def main_worker(gpu, args):
 
     datalist_json = args.json_dir
 
-    train_transform, val_transform = _get_transform(args, ellipsoid_model)
+    train_transform, val_transform = _get_transform(args, ellipsoid_model, filter_model, filter_inferer)
 
     ## NETWORK
     if (args.model_name is None) or args.model_name == 'unet':

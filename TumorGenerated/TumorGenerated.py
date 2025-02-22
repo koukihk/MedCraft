@@ -8,9 +8,6 @@ from monai.transforms.transform import MapTransform, RandomizableTransform
 
 from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_b)
 
-Organ_List = {'liver': [1, 2]}
-Organ_HU = {'liver': [100, 160]}
-
 
 class TumorGenerated(RandomizableTransform, MapTransform):
     def __init__(self,
@@ -25,10 +22,6 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         random.seed(0)
         np.random.seed(0)
         self.ellipsoid_model = ellipsoid_model
-        self.organ_hu_lowerbound = Organ_HU['liver'][0]  # organ hu lowerbound
-        self.outrange_standard_val = Organ_HU['liver'][1]  # outrange standard value
-        self.organ_standard_val = 0  # organ standard value
-        self.hu_processor = False
         self.edge_advanced_blur = True
         self.mixup = True
 
@@ -55,9 +48,6 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         if self._do_transform and (np.max(d['label']) <= 1):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
-            d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
-                                                          self.hu_processor, self.organ_standard_val,
-                                                          self.organ_hu_lowerbound, self.outrange_standard_val,
-                                                          self.edge_advanced_blur, self.ellipsoid_model)
+            d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture)
 
         return d
