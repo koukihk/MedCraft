@@ -14,8 +14,8 @@ class TumorGenerated(RandomizableTransform, MapTransform):
                  keys: KeysCollection,
                  prob: float = 0.1,
                  tumor_prob=[0.2, 0.2, 0.2, 0.2, 0.2],
-                 allow_missing_keys: bool = False,
                  ellipsoid_model=None,
+                 allow_missing_keys: bool = False,
                  ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
         RandomizableTransform.__init__(self, prob)

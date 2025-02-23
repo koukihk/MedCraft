@@ -96,8 +96,8 @@ def cal_dice_nsd(pred, truth, spacing_mm=(1, 1, 1), tolerance=2, percent=95):
 
 def _get_model(args):
     inf_size = [96, 96, 96]
-    print(args.model)
-    if args.model == 'swin_unetrv2':
+    print(args.filter)
+    if args.filter == 'swin_unetrv2':
         if args.swin_type == 'tiny':
             feature_size = 12
         elif args.swin_type == 'small':
@@ -114,7 +114,7 @@ def _get_model(args):
                              num_heads=[3, 6, 12, 24],
                              window_size=[7, 7, 7])
 
-    elif args.model == 'unet':
+    elif args.filter == 'unet':
         from monai.networks.nets import UNet
         model = UNet(
             spatial_dims=3,
@@ -126,7 +126,7 @@ def _get_model(args):
         )
 
     else:
-        raise ValueError('Unsupported model ' + str(args.model))
+        raise ValueError('Unsupported model ' + str(args.filter))
 
     if args.checkpoint:
         checkpoint = torch.load(os.path.join(args.log_dir, 'model.pt'), map_location='cpu')

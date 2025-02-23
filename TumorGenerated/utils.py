@@ -306,23 +306,23 @@ def is_edge_point(mask_scan, potential_point, edge_op="both", neighborhood_size=
 
 
 def get_ellipsoid(x, y, z):
-    """
-    Generate a 3D ellipsoid with given radii x, y, z.
+    """"
+    x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
     """
     sh = (4 * x, 4 * y, 4 * z)
-    out = np.zeros(sh, dtype=np.uint8)  # Use uint8 to reduce memory usage
-    aux = np.zeros(sh, dtype=np.float32)  # Using float32 for better memory performance
+    out = np.zeros(sh, int)
+    aux = np.zeros(sh)
     radii = np.array([x, y, z])
     com = np.array([2 * x, 2 * y, 2 * z])  # center point
 
-    # Calculate bounding box
+    # calculate the ellipsoid
     bboxl = np.floor(com - radii).clip(0, None).astype(int)
-    bboxh = np.ceil(com + radii).clip(None, sh).astype(int)
+    bboxh = (np.ceil(com + radii) + 1).clip(None, sh).astype(int)
     roi = out[tuple(map(slice, bboxl, bboxh))]
     roiaux = aux[tuple(map(slice, bboxl, bboxh))]
-
-    logrid = np.ogrid[tuple(map(slice, (bboxl - com) / radii, (bboxh - com - 1) / radii, 1j * (bboxh - bboxl)))]
-    dst = (1 - sum(np.square(logrid))).clip(0, None)
+    logrid = *map(np.square, np.ogrid[tuple(
+        map(slice, (bboxl - com) / radii, (bboxh - com - 1) / radii, 1j * (bboxh - bboxl)))]),
+    dst = (1 - sum(logrid)).clip(0, None)
     mask = dst > roiaux
     roi[mask] = 1
     np.copyto(roiaux, dst, where=mask)

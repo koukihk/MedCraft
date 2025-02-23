@@ -1,45 +1,65 @@
+import random
+from typing import Hashable, Mapping, Dict
+
 import numpy as np
 import torch
-from monai.transforms import Transform
+from monai.config import KeysCollection
+from monai.config.type_definitions import NdarrayOrTensor
+from monai.transforms import RandomizableTransform, MapTransform
 from scipy.ndimage import label, binary_dilation
 
 
-class TumorFilter(Transform):
-    def __init__(self, model, model_inferer, use_inferer=True, threshold=0.5):
-        self.model = model
-        self.model_inferer = model_inferer
-        self.use_inferer = use_inferer
+class TumorFilter(RandomizableTransform, MapTransform):
+    def __init__(self,
+                 keys: KeysCollection,
+                 prob: float = 0.8,
+                 filter=None,
+                 filter_inferer=None,
+                 use_inferer=True,
+                 threshold=0.5,
+                 allow_missing_keys: bool = False) -> None:
+        MapTransform.__init__(self, keys, allow_missing_keys)
+        RandomizableTransform.__init__(self, prob)
+        random.seed(0)
+        np.random.seed(0)
+        self.filter = filter
+        self.filter_inferer = filter_inferer
+        self.use_inferer = use_inferer and filter_inferer is not None
         self.threshold = threshold
 
-    def __call__(self, data):
-        image = data['image']
-        label_data = data['label']
+    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> Dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+        self.randomize(None)
+        image = d['image']
+        label = d['label']
 
-        filtered_image, filtered_label = filter_synthetic_tumor_batch(
-            image, label_data, self.model, self.model_inferer, self.use_inferer, self.threshold
+
+        image_tensor = torch.from_numpy(image).unsqueeze(0)
+        label_tensor = torch.from_numpy(label).unsqueeze(0)
+
+        # Process single sample
+        filtered_image, filtered_label = filter_synthetic_tumor(
+            image_tensor, label_tensor,
+            self.filter, self.filter_inferer, self.use_inferer, self.threshold
         )
 
         if filtered_image is None or filtered_label is None:
-            raise ValueError("No high-quality synthetic tumors passed the filtering process.")
+            raise ValueError("The synthetic tumor did not pass the filtering process.")
 
-        data['image'] = filtered_image
-        data['label'] = filtered_label
-        return data
+
+        filtered_image = filtered_image.squeeze(0).numpy()
+        filtered_label = filtered_label.squeeze(0).numpy()
+
+        d['image'] = filtered_image
+        d['label'] = filtered_label
+        return d
 
 
 def denoise_pred(pred: np.ndarray):
-    if pred.ndim == 4:
-        return denoise_single_sample(pred)
-    elif pred.ndim == 5:
-        batch_denoised = np.zeros_like(pred)
-        for i in range(pred.shape[0]):
-            batch_denoised[i, ...] = denoise_single_sample(pred[i, ...])
-        return batch_denoised
-    else:
-        raise ValueError(f"Unexpected input dimensions: {pred.shape}")
-
-
-def denoise_single_sample(pred: np.ndarray):
+    """
+    # 0: background, 1: liver, 2: tumor.
+    Input shape: (C, H, W, D)
+    """
     denoise_pred = np.zeros_like(pred)
 
     live_channel = pred[1, ...]
@@ -62,57 +82,31 @@ def denoise_single_sample(pred: np.ndarray):
 
 
 def calculate_quality_proportion(segmentation_output, tumor_mask):
-    # tumor_mask 可能为 torch.Tensor，因此调用 .float()
     tumor_mask = (tumor_mask == 2).float()
     tumor_voxels = tumor_mask.sum().item()
     if tumor_voxels == 0:
-        return 0  # 避免除以0
-    if segmentation_output.ndim == 5:
-        seg_tumor_prob = segmentation_output[:, 2, ...]
-    else:
-        seg_tumor_prob = segmentation_output[2, ...]
-    matched_voxels = (seg_tumor_prob * tumor_mask).sum().item()
+        return 0
+    seg_tumor_prob = segmentation_output[0][2, ...]
+    matched_voxels = (seg_tumor_prob * tumor_mask.squeeze(0).squeeze(0)).sum().item()
     return matched_voxels / tumor_voxels
 
 
-def filter_synthetic_tumor_batch(data, target, model, model_inferer, use_inferer, threshold=0.5):
-    # 记录输入数据类型，如果为 numpy，则处理完后转换回 numpy
-    input_type = 'tensor'
-    if isinstance(data, np.ndarray):
-        input_type = 'numpy'
-        data = torch.from_numpy(data)
-        target = torch.from_numpy(target)
+def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, threshold=0.5):
+    # Input data: (1, 1, H, W, D), target: (1, 1, H, W, D)
+    with torch.no_grad():
+        output = model_inferer(data) if use_inferer else model(data)
+        output_np = output.detach().numpy()
 
-    filtered_data = []
-    filtered_target = []
-    num_samples = data.size(0)  # 此时 data 是 torch.Tensor
+        # Process each sample in the batch (though here batch size should be 1)
+        denoised_outputs = []
+        for i in range(output_np.shape[0]):
+            single_pred = output_np[i]  # (3, H, W, D)
+            denoised = denoise_pred(single_pred)
+            denoised_outputs.append(denoised)
+        denoised_output = torch.tensor(np.stack(denoised_outputs))
 
-    for i in range(num_samples):
-        single_data = data[i].unsqueeze(0)
-        single_target = target[i].unsqueeze(0)
-
-        with torch.no_grad():
-            output = model_inferer(single_data) if use_inferer else model(single_data)
-            # 将输出转换为 numpy 数组进行去噪处理
-            output_np = output.detach().cpu().numpy()
-            output_np = denoise_pred(output_np)
-            # 再转换为 torch.Tensor
-            output = torch.tensor(output_np, device=single_data.device)
-
-            quality_proportion = calculate_quality_proportion(output, single_target)
-            if quality_proportion >= threshold:
-                filtered_data.append(single_data)
-                filtered_target.append(single_target)
-
-    if len(filtered_data) == 0:
-        return None, None
-
-    filtered_data = torch.cat(filtered_data, dim=0)
-    filtered_target = torch.cat(filtered_target, dim=0)
-
-    # 如果输入是 numpy 数组，则转换回 numpy 格式
-    if input_type == 'numpy':
-        filtered_data = filtered_data.detach().cpu().numpy()
-        filtered_target = filtered_target.detach().cpu().numpy()
-
-    return filtered_data, filtered_target
+        quality = calculate_quality_proportion(denoised_output, target)
+        if quality >= threshold:
+            return data, target
+        else:
+            return None, None

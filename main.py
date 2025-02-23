@@ -33,7 +33,6 @@ parser.add_argument('--syn', action='store_true')  # use synthetic tumors for tr
 parser.add_argument('--filter', action='store_true', help='Enable tumor quality filtering')
 parser.add_argument('--filter_dir', default='runs/standard_all.unet', type=str)
 parser.add_argument('--filter_name', default='unet', type=str)
-parser.add_argument('--filter_threshold', type=float, default=0.3, help='Quality threshold for filtering tumors')
 parser.add_argument('--cutmix', action='store_true', help='Enable cutmix augmentation')
 parser.add_argument('--cutmix_beta', type=float, default=0.3, help='Beta parameter for cutmix')
 parser.add_argument('--cutmix_prob', type=float, default=0.2, help='Probability of applying cutmix')
@@ -249,7 +248,8 @@ def _get_transform(args, ellipsoid_model=None, filter_model=None, filter_inferer
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
                                     mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, ellipsoid_model=ellipsoid_model),
-                TumorFilter(model=filter_model, model_inferer=filter_inferer, use_inferer=True, threshold=0.5),  # Inserted here
+                TumorFilter(keys=["image", "label"], prob=0.8, filter=filter_model, filter_inferer=filter_inferer,
+                            use_inferer=True, threshold=0.5),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -397,7 +397,7 @@ def load_filter(args):
     for k, v in checkpoint['state_dict'].items():
         new_state_dict[k.replace('backbone.', '')] = v
     model.load_state_dict(new_state_dict, strict=False)
-    model = model.cuda()
+    model = model.cpu()
     model_inferer = partial(
         sliding_window_inference,
         roi_size=inf_size,
