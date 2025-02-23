@@ -23,7 +23,6 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         np.random.seed(0)
         self.ellipsoid_model = ellipsoid_model
         self.edge_advanced_blur = True
-        self.mixup = True
 
         self.tumor_types = ['tiny', 'small', 'medium', 'large', 'mix']
 
@@ -48,6 +47,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         if self._do_transform and (np.max(d['label']) <= 1):
             tumor_type = np.random.choice(self.tumor_types, p=self.tumor_prob.ravel())
             texture = random.choice(self.textures)
-            d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture)
+            d['image'][0], d['label'][0] = SynthesisTumor(d['image'][0], d['label'][0], tumor_type, texture,
+                                                          self.edge_advanced_blur, self.ellipsoid_model)
 
         return d
