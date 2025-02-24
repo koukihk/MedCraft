@@ -13,6 +13,7 @@ class TumorFilter(RandomizableTransform, MapTransform):
     def __init__(self,
                  keys: KeysCollection,
                  prob: float = 0.8,
+                 rank: int = 0,
                  filter=None,
                  filter_inferer=None,
                  use_inferer=True,
@@ -22,9 +23,10 @@ class TumorFilter(RandomizableTransform, MapTransform):
         RandomizableTransform.__init__(self, prob)
         random.seed(0)
         np.random.seed(0)
+        self.rank = rank
         self.filter = filter
         self.filter_inferer = filter_inferer
-        self.use_inferer = use_inferer and filter_inferer is not None
+        self.use_inferer = use_inferer and (filter_inferer is not None)
         self.threshold = threshold
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> Dict[Hashable, NdarrayOrTensor]:
@@ -34,8 +36,8 @@ class TumorFilter(RandomizableTransform, MapTransform):
         label = d['label']
 
 
-        image_tensor = torch.from_numpy(image).unsqueeze(0)
-        label_tensor = torch.from_numpy(label).unsqueeze(0)
+        image_tensor = torch.from_numpy(image).unsqueeze(0).cuda(self.rank, non_blocking=True)
+        label_tensor = torch.from_numpy(label).unsqueeze(0).cuda(self.rank, non_blocking=True)
 
         # Process single sample
         filtered_image, filtered_label = filter_synthetic_tumor(
@@ -44,7 +46,9 @@ class TumorFilter(RandomizableTransform, MapTransform):
         )
 
         if filtered_image is None or filtered_label is None:
-            raise ValueError("The synthetic tumor did not pass the filtering process.")
+            d['valid'] = False
+        else:
+            d['valid'] = True
 
 
         filtered_image = filtered_image.squeeze(0).numpy()

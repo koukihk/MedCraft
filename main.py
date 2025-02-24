@@ -248,8 +248,8 @@ def _get_transform(args, ellipsoid_model=None, filter_model=None, filter_inferer
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
                                     mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, ellipsoid_model=ellipsoid_model),
-                TumorFilter(keys=["image", "label"], prob=0.8, filter=filter_model, filter_inferer=filter_inferer,
-                            use_inferer=True, threshold=0.5),
+                # TumorFilter(keys=["image", "label"], prob=0.8, rank=args.rank, filter=filter_model, filter_inferer=filter_inferer,
+                #              use_inferer=True, threshold=0.5),
                 transforms.ScaleIntensityRanged(
                     keys=["image"], a_min=-21, a_max=189,
                     b_min=0.0, b_max=1.0, clip=True,
@@ -397,7 +397,7 @@ def load_filter(args):
     for k, v in checkpoint['state_dict'].items():
         new_state_dict[k.replace('backbone.', '')] = v
     model.load_state_dict(new_state_dict, strict=False)
-    model = model.cpu()
+    model = model.cuda
     model_inferer = partial(
         sliding_window_inference,
         roi_size=inf_size,
@@ -520,7 +520,7 @@ def main_worker(gpu, args):
     datalist = load_decathlon_datalist(datalist_json, True, "training", base_dir=data_dir)
     val_files = load_decathlon_datalist(datalist_json, True, "validation", base_dir=val_data_dir)
 
-    # train_datalist = extend_datalist(datalist)
+    # train_datalist = [data for data in datalist if data.get('valid', True)]
     train_datalist = datalist
 
     new_datalist = []
