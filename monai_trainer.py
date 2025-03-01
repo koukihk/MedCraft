@@ -175,6 +175,48 @@ import torch.nn.functional as F
 from torch.distributions import Beta
 from torch.cuda.amp import autocast
 
+import matplotlib.pyplot as plt
+import os
+
+def visualize_mixed_samples(data, target, num_samples=5, save_dir='visualizations'):
+    """
+    Visualize mixed samples and save the figures to a specified directory.
+
+    Args:
+        data (torch.Tensor): The mixed image data.
+        target (torch.Tensor): The mixed target labels.
+        num_samples (int): Number of samples to visualize.
+        save_dir (str): Directory to save the visualization images.
+    """
+    # Ensure the save directory exists
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    data = data.cpu().numpy()
+    target = target.cpu().numpy()
+
+    for i in range(min(num_samples, data.shape[0])):
+        plt.figure(figsize=(12, 4))
+
+        # Sagittal view of mixed image
+        plt.subplot(1, 3, 1)
+        plt.imshow(data[i, 0, :, :, data.shape[-1] // 2], cmap='gray')
+        plt.title('Mixed Image (Sagittal)')
+
+        # Sagittal view of mixed label
+        plt.subplot(1, 3, 2)
+        plt.imshow(target[i, 0, :, :, data.shape[-1] // 2], cmap='jet')
+        plt.title('Mixed Label (Sagittal)')
+
+        # Axial view of mixed image
+        plt.subplot(1, 3, 3)
+        plt.imshow(data[i, 0, data.shape[-3] // 2, :, :], cmap='gray')
+        plt.title('Mixed Image (Axial)')
+
+        # Save the figure to the specified directory
+        save_path = os.path.join(save_dir, f'sample_{i}.png')
+        plt.savefig(save_path)
+        plt.close()  # Close the figure to free memory
 
 class MixDataLoader:
     def __init__(self, loader):
@@ -185,19 +227,47 @@ class MixDataLoader:
         return random.choice(self.data_list)
 
 
-def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
-    if np.random.rand() > cutmix_prob:
+# Mixup
+def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=3):
+    if random.random() > mixup_prob or alpha <= 0:
         return data, target
-
+    beta_dist = Beta(alpha, alpha)
+    lam = beta_dist.sample().item()
     random_batch = mixup_loader.get_random_batch()
     other_data = random_batch["image"].to(data.device)
     other_target = random_batch["label"].to(target.device)
+    mixed_data = lam * data + (1 - lam) * other_data
+    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    mixed_target = lam * target_one_hot + (1 - lam) * other_target_one_hot
+    return mixed_data, mixed_target
 
-    if other_data.shape != data.shape or other_target.shape != target.shape:
-        raise ValueError("CutMix requires both batches to have the same shape.")
+def tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=1.0, mixup_prob=0.5, num_classes=3):
+    if random.random() > mixup_prob or alpha <= 0:
+        return data, target
+    tumor_mask = (target.squeeze(1) == 2).float().sum() > 0
+    if not tumor_mask:
+        return data, target
+    beta_dist = Beta(alpha, alpha)
+    lam = beta_dist.sample().item()
+    random_batch = mixup_loader.get_random_batch()
+    other_data = random_batch["image"].to(data.device)
+    other_target = random_batch["label"].to(target.device)
+    mixed_data = lam * data + (1 - lam) * other_data
+    # Ensure target is processed correctly
+    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    mixed_target = lam * target_one_hot + (1 - lam) * other_target_one_hot
+    return mixed_data, mixed_target
 
+# CutMix
+def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
+    if np.random.rand() > cutmix_prob:
+        return data, target
+    random_batch = mixup_loader.get_random_batch()
+    other_data = random_batch["image"].to(data.device)
+    other_target = random_batch["label"].to(target.device)
     lam = np.random.beta(beta, beta) if beta > 0 else 1
-
     D, H, W = data.shape[2:]
     cut_d = int(D * np.sqrt(1 - lam))
     cut_h = int(H * np.sqrt(1 - lam))
@@ -205,71 +275,52 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes
     d1 = np.random.randint(0, D - cut_d + 1)
     h1 = np.random.randint(0, H - cut_h + 1)
     w1 = np.random.randint(0, W - cut_w + 1)
-
     mixed_data = data.clone()
-    mixed_target = target.clone()
-
     mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
-
+    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    mixed_target = target_one_hot.clone()
+    lam_region = (cut_d * cut_h * cut_w) / (D * H * W)
     mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
-        other_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
-
-    target_squeezed = target.squeeze(1)
-    other_target_squeezed = other_target.squeeze(1)
-    target_one_hot = F.one_hot(target_squeezed.long(), num_classes=num_classes)
-    target_one_hot = target_one_hot.permute(0, 4, 1, 2, 3).float()
-    other_target_one_hot = F.one_hot(other_target_squeezed.long(), num_classes=num_classes)
-    other_target_one_hot = other_target_one_hot.permute(0, 4, 1, 2, 3).float()
-
-    mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
-
-    mixed_target = mixed_target_one_hot.argmax(dim=1, keepdim=True)
-
+        (1 - lam_region) * target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] + \
+        lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
     return mixed_data, mixed_target
 
-
-def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=3):
-    if random.random() > mixup_prob or alpha <= 0:
+def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
+    if np.random.rand() > cutmix_prob:
         return data, target
-
-    beta_dist = Beta(alpha, alpha)
-    lam = beta_dist.sample().item()
-
     random_batch = mixup_loader.get_random_batch()
     other_data = random_batch["image"].to(data.device)
     other_target = random_batch["label"].to(target.device)
-
-    if other_data.shape != data.shape or other_target.shape != target.shape:
-        raise ValueError("Mixup requires both batches to have the same shape.")
-
-    target_squeezed = target.squeeze(1)
-    other_target_squeezed = other_target.squeeze(1)
-    target_one_hot = F.one_hot(target_squeezed.long(), num_classes=num_classes)
-    target_one_hot = target_one_hot.permute(0, 4, 1, 2, 3).float()
-    other_target_one_hot = F.one_hot(other_target_squeezed.long(), num_classes=num_classes)
-    other_target_one_hot = other_target_one_hot.permute(0, 4, 1, 2, 3).float()
-
-    mixed_target_one_hot = lam * target_one_hot + (1 - lam) * other_target_one_hot
-    mixed_target = mixed_target_one_hot.argmax(dim=1, keepdim=True)
-
-    mixed_data = lam * data + (1 - lam) * other_data
-
+    lam = np.random.beta(beta, beta) if beta > 0 else 1
+    D, H, W = data.shape[2:]
+    cut_d = int(D * np.sqrt(1 - lam))
+    cut_h = int(H * np.sqrt(1 - lam))
+    cut_w = int(W * np.sqrt(1 - lam))
+    tumor_mask = (target.squeeze(1) == 2).float()
+    tumor_coords = torch.nonzero(tumor_mask)
+    if tumor_coords.size(0) == 0:
+        d1 = np.random.randint(0, D - cut_d + 1)
+        h1 = np.random.randint(0, H - cut_h + 1)
+        w1 = np.random.randint(0, W - cut_w + 1)
+    else:
+        center = tumor_coords.mean(dim=0).int()
+        d1 = max(0, min(center[0] - cut_d // 2, D - cut_d))
+        h1 = max(0, min(center[1] - cut_h // 2, H - cut_h))
+        w1 = max(0, min(center[2] - cut_w // 2, W - cut_w))
+    mixed_data = data.clone()
+    mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
+        other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
+    # Ensure target is processed correctly
+    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+    mixed_target = target_one_hot.clone()
+    lam_region = (cut_d * cut_h * cut_w) / (D * H * W)
+    mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
+        (1 - lam_region) * target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] + \
+        lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
     return mixed_data, mixed_target
-
-
-class SimpleAverageMeter:
-    def __init__(self):
-        self.sum = 0.0
-        self.count = 0.0
-
-    @property
-    def avg(self):
-        return self.sum / self.count if self.count != 0 else 0
-
-    def update(self, val, n=1):
-        self.sum += val * n
-        self.count += n
 
 
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
@@ -286,27 +337,28 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
         else:
             data, target = batch_data["image"], batch_data["label"]
 
+        if epoch % 200 == 0 and idx % 40 == 0:
+            visualize_mixed_samples(data, target, save_dir='path/to/save/directory')
+
         data = data.cuda(args.rank, non_blocking=True)
         target = target.cuda(args.rank, non_blocking=True)
 
-        if args.cutmix:
-            data, target = cutmix_3d(
-                data, target, mixup_loader,
-                beta=args.cutmix_beta,
-                cutmix_prob=args.cutmix_prob
-            )
-
         if args.mixup:
-            data, target = mixup_3d(
-                data, target, mixup_loader,
-                alpha=args.mixup_alpha,
-                mixup_prob=args.mixup_prob
-            )
+            data, target = tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=args.mixup_alpha,
+                                                   mixup_prob=args.mixup_prob)
+            print("Post-Mixup target shape:", target.shape)
+
+        if args.cutmix:
+            data, target = tumor_aware_cutmix_3d(data, target, mixup_loader, beta=args.cutmix_beta,
+                                                 cutmix_prob=args.cutmix_prob)
+            print("Post-Cutmix target shape:", target.shape)
 
         optimizer.zero_grad(set_to_none=True)
 
         with autocast(enabled=args.amp):
             logits = model(data)
+            print("logits shape:", logits.shape)
+            print("target shape:", target.shape)
             loss = loss_func(logits, target)
 
         if args.amp:
@@ -333,6 +385,92 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
             print(
                 f"Epoch {epoch}/{args.max_epochs} {idx}/{len(loader)} "
                 f"loss: {run_loss.avg:.4f} time {elapsed:.2f}s"
+            )
+        start_time = time.time()
+
+    return run_loss.avg
+
+
+def train_epoch_with_validity(model, loader, optimizer, scaler, epoch, loss_func, args,
+                filter_model=None, filter_inferer=None):
+    model.train()
+    start_time = time.time()
+    run_loss = AverageMeter()
+
+    mixup_loader = MixDataLoader(loader)
+
+    for idx, batch_data in enumerate(loader):
+        if isinstance(batch_data, list):
+            data, target = batch_data
+            valid = torch.ones(data.size(0), dtype=torch.bool)  # 默认有效
+        else:
+            data, target = batch_data["image"], batch_data["label"]
+            valid = batch_data.get("valid", torch.ones(data.size(0), dtype=torch.bool)).bool()
+
+        valid_indices = torch.where(valid)[0]
+        if len(valid_indices) == 0:
+            continue  # 跳过全无效的batch
+        data = data[valid_indices]
+        target = target[valid_indices]
+        effective_bs = len(valid_indices)
+
+        data = data.cuda(args.rank, non_blocking=True)
+        target = target.cuda(args.rank, non_blocking=True)
+
+        if args.cutmix:
+            data, target = cutmix_3d(
+                data, target, mixup_loader,
+                beta=args.cutmix_beta,
+                cutmix_prob=args.cutmix_prob
+            )
+
+        if args.mixup:
+            data, target = mixup_3d(
+                data, target, mixup_loader,
+                alpha=args.mixup_alpha,
+                mixup_prob=args.mixup_prob
+            )
+
+        optimizer.zero_grad(set_to_none=True)
+
+        with autocast(enabled=args.amp):
+            logits = model(data)
+            loss = loss_func(logits, target) if effective_bs > 0 else 0
+
+        if effective_bs > 0:
+            if args.amp:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
+
+        if args.distributed:
+            effective_bs_tensor = torch.tensor(effective_bs, dtype=torch.float32, device=data.device)
+            loss_sum = loss.detach() * effective_bs
+            loss_sum_tensor = torch.tensor(loss_sum.item(), dtype=torch.float32, device=data.device)
+
+            # 全局求和
+            dist.all_reduce(effective_bs_tensor, op=dist.ReduceOp.SUM)
+            dist.all_reduce(loss_sum_tensor, op=dist.ReduceOp.SUM)
+
+            total_effective = effective_bs_tensor.item()
+            total_loss_sum = loss_sum_tensor.item()
+
+            if total_effective > 0:
+                avg_loss = total_loss_sum / total_effective
+                run_loss.update(avg_loss, n=total_effective)
+        else:
+            if effective_bs > 0:
+                run_loss.update(loss.item(), n=effective_bs)
+
+        if args.rank == 0 and idx % 10 == 0:
+            elapsed = time.time() - start_time
+            print(
+                f"Epoch {epoch}/{args.max_epochs} {idx}/{len(loader)} "
+                f"loss: {run_loss.avg:.4f} | eff_bs: {effective_bs} "
+                f"time {elapsed:.2f}s"
             )
         start_time = time.time()
 

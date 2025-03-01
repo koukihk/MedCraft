@@ -47,12 +47,10 @@ class TumorFilter(RandomizableTransform, MapTransform):
 
         if filtered_image is None or filtered_label is None:
             d['valid'] = False
-        else:
-            d['valid'] = True
+            return d
 
-
-        filtered_image = filtered_image.squeeze(0).numpy()
-        filtered_label = filtered_label.squeeze(0).numpy()
+        filtered_image = filtered_image.cpu().squeeze(0).numpy()
+        filtered_label = filtered_label.cpu().squeeze(0).numpy()
 
         d['image'] = filtered_image
         d['label'] = filtered_label
@@ -99,7 +97,7 @@ def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, thre
     # Input data: (1, 1, H, W, D), target: (1, 1, H, W, D)
     with torch.no_grad():
         output = model_inferer(data) if use_inferer else model(data)
-        output_np = output.detach().numpy()
+        output_np = output.cpu().detach().numpy()
 
         # Process each sample in the batch (though here batch size should be 1)
         denoised_outputs = []
@@ -107,10 +105,10 @@ def filter_synthetic_tumor(data, target, model, model_inferer, use_inferer, thre
             single_pred = output_np[i]  # (3, H, W, D)
             denoised = denoise_pred(single_pred)
             denoised_outputs.append(denoised)
-        denoised_output = torch.tensor(np.stack(denoised_outputs))
+        denoised_output = torch.tensor(np.stack(denoised_outputs)).cpu()
 
-        quality = calculate_quality_proportion(denoised_output, target)
+        quality = calculate_quality_proportion(denoised_output, target.cpu())
         if quality >= threshold:
-            return data, target
+            return data.cpu(), target.cpu()
         else:
             return None, None

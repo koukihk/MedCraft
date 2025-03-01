@@ -23,7 +23,7 @@ from tumor_analyzer import EllipsoidFitter
 warnings.filterwarnings("ignore")
 
 ## Online Tumor Generation
-from TumorGenerated import TumorGenerated, TumorFilter
+from TumorGenerated import TumorGenerated, TumorFilter, AddValidKeyd
 
 import argparse
 
@@ -34,11 +34,11 @@ parser.add_argument('--filter', action='store_true', help='Enable tumor quality 
 parser.add_argument('--filter_dir', default='runs/standard_all.unet', type=str)
 parser.add_argument('--filter_name', default='unet', type=str)
 parser.add_argument('--cutmix', action='store_true', help='Enable cutmix augmentation')
-parser.add_argument('--cutmix_beta', type=float, default=0.3, help='Beta parameter for cutmix')
-parser.add_argument('--cutmix_prob', type=float, default=0.2, help='Probability of applying cutmix')
+parser.add_argument('--cutmix_beta', type=float, default=1.0, help='Beta parameter for cutmix')
+parser.add_argument('--cutmix_prob', type=float, default=0.5, help='Probability of applying cutmix')
 parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentation')
-parser.add_argument('--mixup_alpha', type=float, default=0.3, help='Alpha parameter for mixup')
-parser.add_argument('--mixup_prob', type=float, default=0.2, help='Probability of applying mixup')
+parser.add_argument('--mixup_alpha', type=float, default=1.0, help='Alpha parameter for mixup')
+parser.add_argument('--mixup_prob', type=float, default=0.5, help='Probability of applying mixup')
 parser.add_argument('--ellipsoid', action='store_true')
 parser.add_argument('--checkpoint', default=None)
 parser.add_argument('--logdir', default=None)
@@ -248,6 +248,7 @@ def _get_transform(args, ellipsoid_model=None, filter_model=None, filter_inferer
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
                                     mode=("bilinear", "nearest")),
                 TumorGenerated(keys=["image", "label"], prob=0.9, ellipsoid_model=ellipsoid_model),
+                # AddValidKeyd(keys=["image", "label"]),
                 # TumorFilter(keys=["image", "label"], prob=0.8, rank=args.rank, filter=filter_model, filter_inferer=filter_inferer,
                 #              use_inferer=True, threshold=0.5),
                 transforms.ScaleIntensityRanged(
@@ -397,7 +398,7 @@ def load_filter(args):
     for k, v in checkpoint['state_dict'].items():
         new_state_dict[k.replace('backbone.', '')] = v
     model.load_state_dict(new_state_dict, strict=False)
-    model = model.cuda
+    model = model.cuda()
     model_inferer = partial(
         sliding_window_inference,
         roi_size=inf_size,
@@ -508,7 +509,33 @@ def main_worker(gpu, args):
         model.load_state_dict(model_dict['state_dict'])
         print('Use pretrained weights')
 
-    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    # dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    from monai.losses import DiceLoss
+    import torch.nn.functional as F
+    def soft_dice_ce_loss(pred, target, smooth=1e-6):
+        """
+        Compute a combined Dice and KL Divergence loss for soft labels.
+
+        Args:
+            pred (torch.Tensor): Predicted logits, shape [batch_size, num_classes, d, h, w]
+            target (torch.Tensor): Soft target labels, shape [batch_size, num_classes, d, h, w]
+            smooth (float): Smoothing factor for Dice loss
+
+        Returns:
+            torch.Tensor: Combined loss
+        """
+        # Softmax for Dice loss
+        pred_softmax = F.softmax(pred, dim=1)
+        dice_loss = DiceLoss(to_onehot_y=False, softmax=False, squared_pred=True, smooth_nr=0, smooth_dr=smooth)
+        dice = dice_loss(pred_softmax, target)
+
+        # KL Divergence for soft labels (pred should be log probabilities, target should be probabilities)
+        pred_log_softmax = F.log_softmax(pred, dim=1)
+        kl_div = F.kl_div(pred_log_softmax, target, reduction='batchmean')
+
+        return dice + kl_div
+
+    dice_loss = soft_dice_ce_loss
 
     post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
     post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
