@@ -242,24 +242,6 @@ def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=
     mixed_target = lam * target_one_hot + (1 - lam) * other_target_one_hot
     return mixed_data, mixed_target
 
-def tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=1.0, mixup_prob=0.5, num_classes=3):
-    if random.random() > mixup_prob or alpha <= 0:
-        return data, target
-    tumor_mask = (target.squeeze(1) == 2).float().sum() > 0
-    if not tumor_mask:
-        return data, target
-    beta_dist = Beta(alpha, alpha)
-    lam = beta_dist.sample().item()
-    random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].to(data.device)
-    other_target = random_batch["label"].to(target.device)
-    mixed_data = lam * data + (1 - lam) * other_data
-    # Ensure target is processed correctly
-    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    mixed_target = lam * target_one_hot + (1 - lam) * other_target_one_hot
-    return mixed_data, mixed_target
-
 # CutMix
 def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
     if np.random.rand() > cutmix_prob:
@@ -287,9 +269,38 @@ def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes
         lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
     return mixed_data, mixed_target
 
+
+def tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=1.0, mixup_prob=0.5, num_classes=3):
+    # Convert target to soft labels regardless of mixup application
+    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+
+    if random.random() > mixup_prob or alpha <= 0:
+        return data, target_one_hot  # Return soft labels even if no mixup
+
+    tumor_mask = (target.squeeze(1) == 2).float().sum() > 0
+    if not tumor_mask:
+        return data, target_one_hot
+
+    beta_dist = Beta(alpha, alpha)
+    lam = beta_dist.sample().item()
+    random_batch = mixup_loader.get_random_batch()
+    other_data = random_batch["image"].to(data.device)
+    other_target = random_batch["label"].to(target.device)
+    mixed_data = lam * data + (1 - lam) * other_data
+
+    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2,
+                                                                                                      3).float()
+    mixed_target = lam * target_one_hot + (1 - lam) * other_target_one_hot
+    return mixed_data, mixed_target
+
+
 def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
+    # Convert target to soft labels regardless of cutmix application
+    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+
     if np.random.rand() > cutmix_prob:
-        return data, target
+        return data, target_one_hot  # Return soft labels even if no cutmix
+
     random_batch = mixup_loader.get_random_batch()
     other_data = random_batch["image"].to(data.device)
     other_target = random_batch["label"].to(target.device)
@@ -300,21 +311,24 @@ def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5,
     cut_w = int(W * np.sqrt(1 - lam))
     tumor_mask = (target.squeeze(1) == 2).float()
     tumor_coords = torch.nonzero(tumor_mask)
+
     if tumor_coords.size(0) == 0:
         d1 = np.random.randint(0, D - cut_d + 1)
         h1 = np.random.randint(0, H - cut_h + 1)
         w1 = np.random.randint(0, W - cut_w + 1)
     else:
-        center = tumor_coords.mean(dim=0).int()
+        # 将 tumor_coords 转换为浮点类型后再计算均值
+        center = tumor_coords.float().mean(dim=0).int()
         d1 = max(0, min(center[0] - cut_d // 2, D - cut_d))
         h1 = max(0, min(center[1] - cut_h // 2, H - cut_h))
         w1 = max(0, min(center[2] - cut_w // 2, W - cut_w))
+
     mixed_data = data.clone()
     mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
         other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
-    # Ensure target is processed correctly
-    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
+
+    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2,
+                                                                                                      3).float()
     mixed_target = target_one_hot.clone()
     lam_region = (cut_d * cut_h * cut_w) / (D * H * W)
     mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
@@ -322,9 +336,7 @@ def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5,
         lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
     return mixed_data, mixed_target
 
-
-def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
-                filter_model=None, filter_inferer=None):
+def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
@@ -337,20 +349,17 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
         else:
             data, target = batch_data["image"], batch_data["label"]
 
-        if epoch % 200 == 0 and idx % 40 == 0:
-            visualize_mixed_samples(data, target, save_dir='path/to/save/directory')
-
         data = data.cuda(args.rank, non_blocking=True)
         target = target.cuda(args.rank, non_blocking=True)
 
         if args.mixup:
             data, target = tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=args.mixup_alpha,
-                                                   mixup_prob=args.mixup_prob)
+                                                  mixup_prob=args.mixup_prob, num_classes=args.num_classes)
             print("Post-Mixup target shape:", target.shape)
 
         if args.cutmix:
             data, target = tumor_aware_cutmix_3d(data, target, mixup_loader, beta=args.cutmix_beta,
-                                                 cutmix_prob=args.cutmix_prob)
+                                                 cutmix_prob=args.cutmix_prob, num_classes=args.num_classes)
             print("Post-Cutmix target shape:", target.shape)
 
         optimizer.zero_grad(set_to_none=True)
@@ -391,8 +400,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args,
     return run_loss.avg
 
 
-def train_epoch_with_validity(model, loader, optimizer, scaler, epoch, loss_func, args,
-                filter_model=None, filter_inferer=None):
+def train_epoch_with_validity(model, loader, optimizer, scaler, epoch, loss_func, args):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
@@ -605,9 +613,7 @@ def run_training(model,
                  model_inferer=None,
                  scheduler=None,
                  start_epoch=0,
-                 val_channel_names=None,
-                 filter_model=None,
-                 filter_inferer=None
+                 val_channel_names=None
                  ):
     # np.set_printoptions(formatter={'float': '{: 0.3f}'.format}, suppress=True)
 
@@ -632,7 +638,7 @@ def run_training(model,
 
         epoch_time = time.time()
         train_loss = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
-                                 args=args, filter_model=filter_model, filter_inferer=filter_inferer)
+                                 args=args)
 
         if args.rank == 0:
             print('Final training  {}/{}'.format(epoch, args.max_epochs - 1), 'loss: {:.4f}'.format(train_loss),

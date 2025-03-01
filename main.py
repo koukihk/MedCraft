@@ -513,26 +513,11 @@ def main_worker(gpu, args):
     from monai.losses import DiceLoss
     import torch.nn.functional as F
     def soft_dice_ce_loss(pred, target, smooth=1e-6):
-        """
-        Compute a combined Dice and KL Divergence loss for soft labels.
-
-        Args:
-            pred (torch.Tensor): Predicted logits, shape [batch_size, num_classes, d, h, w]
-            target (torch.Tensor): Soft target labels, shape [batch_size, num_classes, d, h, w]
-            smooth (float): Smoothing factor for Dice loss
-
-        Returns:
-            torch.Tensor: Combined loss
-        """
-        # Softmax for Dice loss
         pred_softmax = F.softmax(pred, dim=1)
         dice_loss = DiceLoss(to_onehot_y=False, softmax=False, squared_pred=True, smooth_nr=0, smooth_dr=smooth)
         dice = dice_loss(pred_softmax, target)
-
-        # KL Divergence for soft labels (pred should be log probabilities, target should be probabilities)
         pred_log_softmax = F.log_softmax(pred, dim=1)
         kl_div = F.kl_div(pred_log_softmax, target, reduction='batchmean')
-
         return dice + kl_div
 
     dice_loss = soft_dice_ce_loss
@@ -664,9 +649,7 @@ def main_worker(gpu, args):
                             scheduler=scheduler,
                             start_epoch=start_epoch,
                             val_channel_names=val_channel_names,
-                            val_shape_dict=val_shape_dict,
-                            filter_model=filter_model,
-                            filter_inferer=filter_inferer)
+                            val_shape_dict=val_shape_dict)
 
     return accuracy
 
