@@ -570,8 +570,6 @@ def main_worker(gpu, args):
     )
 
     train_sampler = AMDistributedSampler(train_ds) if args.distributed else None
-    # train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=4,
-    #                                sampler=train_sampler, pin_memory=True, multiprocessing_context='spawn')
     train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=4,
                                    sampler=train_sampler, pin_memory=True)
 

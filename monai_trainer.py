@@ -355,19 +355,15 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         if args.mixup:
             data, target = tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=args.mixup_alpha,
                                                   mixup_prob=args.mixup_prob, num_classes=args.num_classes)
-            print("Post-Mixup target shape:", target.shape)
 
         if args.cutmix:
             data, target = tumor_aware_cutmix_3d(data, target, mixup_loader, beta=args.cutmix_beta,
                                                  cutmix_prob=args.cutmix_prob, num_classes=args.num_classes)
-            print("Post-Cutmix target shape:", target.shape)
 
         optimizer.zero_grad(set_to_none=True)
 
         with autocast(enabled=args.amp):
             logits = model(data)
-            print("logits shape:", logits.shape)
-            print("target shape:", target.shape)
             loss = loss_func(logits, target)
 
         if args.amp:
@@ -519,6 +515,9 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
 
             data, target = data.cuda(args.rank), target.cuda(args.rank)
 
+            target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2,
+                                                                                                       3).float()
+
             with autocast(enabled=args.amp):
                 if model_inferer is not None:
                     torch.cuda.empty_cache()
@@ -526,7 +525,8 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                 else:
                     logits = model(data)
 
-            loss = loss_func(logits, target)
+            # loss = loss_func(logits, target)
+            loss = loss_func(logits, target_one_hot)
 
             logits = torch.softmax(logits, 1).cpu().numpy()
             logits = np.argmax(logits, axis=1).astype(np.uint8)
