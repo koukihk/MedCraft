@@ -639,6 +639,8 @@ def run_training(model,
         epoch_time = time.time()
         train_loss = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
                                  args=args)
+        # train_loss = train_epoch_with_validity(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
+        #                          args=args)
 
         if args.rank == 0:
             print('Final training  {}/{}'.format(epoch, args.max_epochs - 1), 'loss: {:.4f}'.format(train_loss),
