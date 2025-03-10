@@ -16,25 +16,22 @@ def generate_complex_noise(mask_shape, scale=10):
     persistence = np.random.uniform(0.4, 0.6)
     lacunarity = np.random.uniform(1.8, 2.2)
     
-    x = np.linspace(0, mask_shape[0] * freq, mask_shape[0])
-    y = np.linspace(0, mask_shape[1] * freq, mask_shape[1])
-    z = np.linspace(0, mask_shape[2] * freq, mask_shape[2])
+    # 生成坐标网格
+    x = np.arange(mask_shape[0]) * freq
+    y = np.arange(mask_shape[1]) * freq
+    z = np.arange(mask_shape[2]) * freq
     
-    xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+    # 使用向量化计算代替网格参数
+    def noise_func(x, y, z):
+        return snoise3(x, y, z,
+                      octaves=octaves,
+                      persistence=persistence,
+                      lacunarity=lacunarity)
     
-    noise = np.zeros_like(xx)
-    for i in range(mask_shape[0]):
-        for j in range(mask_shape[1]):
-            for k in range(mask_shape[2]):
-                noise[i,j,k] = snoise3(
-                    xx[i,j,k], 
-                    yy[i,j,k], 
-                    zz[i,j,k],
-                    octaves=octaves,
-                    persistence=persistence,
-                    lacunarity=lacunarity
-                )
+    # 生成噪声场
+    noise = np.vectorize(noise_func)(*np.meshgrid(x, y, z, indexing='ij'))
     
+    # 归一化到0-1范围
     return (noise - noise.min()) / (noise.max() - noise.min())
 
 
@@ -337,6 +334,16 @@ def get_ellipsoid(x, y, z):
     """"
     x, y, z is the radius of this ellipsoid in x, y, z direction respectly.
     """
+    # 将浮点数值转换为整数（添加安全转换）
+    x = int(round(float(x)))
+    y = int(round(float(y)))
+    z = int(round(float(z)))
+    
+    # 确保最小尺寸为1
+    x = max(1, x)
+    y = max(1, y)
+    z = max(1, z)
+    
     sh = (4 * x, 4 * y, 4 * z)
     out = np.zeros(sh, int)
     aux = np.zeros(sh)
@@ -385,10 +392,10 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
         
         num_tumor = random.randint(*config['num_range'])
         for _ in range(num_tumor):
-            # 基于球体体积公式 V=4/3πr³ 进行半径调整
-            x = np.random.normal(radius_factor, radius_factor*0.3)
-            y = np.random.normal(radius_factor, radius_factor*0.3) 
-            z = np.random.normal(radius_factor*0.8, radius_factor*0.2)  # 模拟肝脏扁平结构
+            # 添加参数约束
+            x = max(1, np.random.normal(radius_factor, radius_factor*0.3))
+            y = max(1, np.random.normal(radius_factor, radius_factor*0.3)) 
+            z = max(1, np.random.normal(radius_factor*0.8, radius_factor*0.2))
             
             sigma = random.uniform(*config['sigma'])
             geo = get_ellipsoid(x, y, z)
