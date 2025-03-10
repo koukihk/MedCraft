@@ -11,15 +11,31 @@ from skimage.restoration import denoise_tv_chambolle
 
 
 def generate_complex_noise(mask_shape, scale=10):
-    a = np.zeros(mask_shape)
+    freq = 1.0 / scale
+    octaves = random.randint(2, 4)
+    persistence = np.random.uniform(0.4, 0.6)
+    lacunarity = np.random.uniform(1.8, 2.2)
+    
+    x = np.linspace(0, mask_shape[0] * freq, mask_shape[0])
+    y = np.linspace(0, mask_shape[1] * freq, mask_shape[1])
+    z = np.linspace(0, mask_shape[2] * freq, mask_shape[2])
+    
+    xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+    
+    noise = np.zeros_like(xx)
     for i in range(mask_shape[0]):
         for j in range(mask_shape[1]):
             for k in range(mask_shape[2]):
-                a[i, j, k] = snoise3(i / scale, j / scale, k / scale)
-
-    # Normalize to 0-1 range
-    a = (a - np.min(a)) / (np.max(a) - np.min(a))
-    return a
+                noise[i,j,k] = snoise3(
+                    xx[i,j,k], 
+                    yy[i,j,k], 
+                    zz[i,j,k],
+                    octaves=octaves,
+                    persistence=persistence,
+                    lacunarity=lacunarity
+                )
+    
+    return (noise - noise.min()) / (noise.max() - noise.min())
 
 
 def generate_prob_function(mask_shape):
@@ -122,8 +138,11 @@ def get_predefined_texture_b(mask_shape, sigma_a, sigma_b):
     b = (a > random_sample).astype(np.float32)
 
     # Apply Gaussian filter using separable filtering
-    for ax in range(3):
-        b = gaussian_filter1d(b, sigma=sigma_b, axis=ax, mode='nearest')
+    from joblib import Parallel, delayed
+    def apply_filter(axis):
+        return gaussian_filter1d(b, sigma=sigma_b, axis=axis, mode='nearest')
+    results = Parallel(n_jobs=3)(delayed(apply_filter)(ax) for ax in range(3))
+    b = np.mean(results, axis=0) 
 
     # Scaling and clipping
     u_0 = np.random.uniform(0.5, 0.55)
@@ -136,40 +155,49 @@ def get_predefined_texture_b(mask_shape, sigma_a, sigma_b):
 
 def get_predefined_texture_c(mask_shape, sigma_a, sigma_b):
     # Step 1: Complex noise generation (e.g., Simplex noise)
-    simplex_scale = int(np.random.uniform(5, 9))
+    simplex_scale = int(np.random.uniform(4, 10))
     a = generate_complex_noise(mask_shape, simplex_scale)
 
     # Step 2: Nonlinear diffusion filtering
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
 
-    # Step 3: Wavelet transform
-    coeffs = pywt.wavedec2(a_denoised, wavelet='db4', level=2)
-    coeffs[1] = tuple(0.3 * v for v in coeffs[1])  # 保留一些高频细节
-    coeffs[2:] = [tuple(np.zeros_like(v) for v in coeff) for coeff in coeffs[2:]]
-    a_wavelet_denoised = pywt.waverec2(coeffs, wavelet='db4')
+    # Step 3: 3D Wavelet transform
+    coeffs = pywt.wavedecn(a_denoised, wavelet='db4', level=2)
+    coeffs[1] = {k: 0.3 * v for k, v in coeffs[1].items()}  # 只保留低层高频信息
+    for i in range(2, len(coeffs)):  # 直接遍历后续层，避免创建额外变量
+        coeffs[i] = {k: np.zeros_like(v) for k, v in coeffs[i].items()}
+    a_wavelet_denoised = pywt.waverecn(coeffs, wavelet='db4')
 
     # Normalize to 0-1
-    a_wavelet_denoised = (a_wavelet_denoised - np.min(a_wavelet_denoised)) / (
-            np.max(a_wavelet_denoised) - np.min(a_wavelet_denoised))
+    min_val, max_val = np.min(a_wavelet_denoised), np.max(a_wavelet_denoised)
+    a_wavelet_denoised = (a_wavelet_denoised - min_val) / (max_val - min_val + 1e-6)  # 避免除0错误
 
-    # Step 4: Gaussian filter
-    # a_2 = gaussian_filter(a, sigma=sigma_a)
-    a_2 = gaussian_filter(a_wavelet_denoised, sigma=sigma_a)
+    # Step 4: Optimized Gaussian filter (using separable filtering)
+    a_2 = a_wavelet_denoised
+    for ax in range(3):  # 分别沿 x, y, z 方向滤波，减少计算量
+        a_2 = gaussian_filter1d(a_2, sigma=sigma_a, axis=ax, mode='nearest')
 
     scale = np.random.uniform(0.19, 0.21)
     base = np.random.uniform(0.04, 0.06)
-    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
+    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2) + 1e-6) + base
 
-    # sample once
-    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
-    b = gaussian_filter(b, sigma_b)
+    # Sample once
+    random_sample = np.random.uniform(0, 1, size=mask_shape).astype(np.float32)
+    b = (a > random_sample).astype(np.float32)
+
+    # Apply Gaussian filter using separable filtering
+    from joblib import Parallel, delayed
+    def apply_filter(axis):
+        return gaussian_filter1d(b, sigma=sigma_b, axis=axis, mode='nearest')
+    results = Parallel(n_jobs=3)(delayed(apply_filter)(ax) for ax in range(3))
+    b = np.mean(results, axis=0) 
 
     # Scaling and clipping
     u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12  # this is for calculte the mean_0.2(b2)
-    beta = u_0 / (np.sum(b * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta * b, 0, 1)  # 目前是0-1区间
+    threshold_mask = b > 0.12
+    threshold_sum = np.sum(threshold_mask)
+    beta = u_0 / (np.sum(b * threshold_mask) / (threshold_sum + 1e-6))  # 避免除 0
+    Bj = np.clip(beta * b, 0, 1)
 
     return Bj
 
@@ -336,18 +364,33 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
         (mask_scan.shape[0] + enlarge_x, mask_scan.shape[1] + enlarge_y, mask_scan.shape[2] + enlarge_z),
         dtype=np.uint8)
 
-    # Tumor size radii
-    radius_dict = {'tiny': 4, 'small': 8, 'medium': 16, 'large': 32}
+    # 优化后的肿瘤参数配置
+    tumor_config = {
+        'tiny':    {'base_radius': 6,  'num_range': (2,5),  'sigma': (0.8,1.5), 'vol_range':(3.4e3, 1.6e4)},
+        'small':   {'base_radius': 10, 'num_range': (1,4),  'sigma': (1.5,3),   'vol_range':(1.6e4, 4e4)},
+        'medium':  {'base_radius': 18, 'num_range': (1,3),  'sigma': (3,5),     'vol_range':(4e4, 1e5)},
+        'large':   {'base_radius': 25, 'num_range': (1,2),  'sigma': (5,8),     'vol_range':(1e5, 1.1e5)},
+        'mix':     {'components': [
+                            {'type':'tiny',  'prob':0.3},
+                            {'type':'small', 'prob':0.4},
+                            {'type':'medium','prob':0.2},
+                            {'type':'large', 'prob':0.1}
+                        ]}
+    }
 
-    # Define a helper function to reduce redundancy
-    def create_tumor(radius_factor, num_tumor_range, sigma_range):
-        num_tumor = random.randint(*num_tumor_range)
+    def create_tumor(config):
+        # 根据体积范围动态计算半径
+        target_vol = np.random.uniform(*config['vol_range'])
+        radius_factor = (target_vol * 3/(4*np.pi)) ** (1/3)
+        
+        num_tumor = random.randint(*config['num_range'])
         for _ in range(num_tumor):
-            x = np.random.randint(int(0.75 * radius_factor), int(1.25 * radius_factor))
-            y = np.random.randint(int(0.75 * radius_factor), int(1.25 * radius_factor))
-            z = np.random.randint(int(0.75 * radius_factor), int(1.25 * radius_factor))
-            sigma = random.uniform(*sigma_range)
-
+            # 基于球体体积公式 V=4/3πr³ 进行半径调整
+            x = np.random.normal(radius_factor, radius_factor*0.3)
+            y = np.random.normal(radius_factor, radius_factor*0.3) 
+            z = np.random.normal(radius_factor*0.8, radius_factor*0.2)  # 模拟肝脏扁平结构
+            
+            sigma = random.uniform(*config['sigma'])
             geo = get_ellipsoid(x, y, z)
             geo = elasticdeform.deform_random_grid(geo, sigma=sigma, points=3, order=0, axis=(0, 1, 2))
 
@@ -361,20 +404,13 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
 
             np.add.at(geo_mask, (slice(x_low, x_high), slice(y_low, y_high), slice(z_low, z_high)), geo)
 
-    # Call the helper function for each tumor type
-    if tumor_type == 'tiny':
-        create_tumor(radius_dict['tiny'], (3, 10), (0.5, 1))
-    elif tumor_type == 'small':
-        create_tumor(radius_dict['small'], (3, 10), (1, 2))
-    elif tumor_type == 'medium':
-        create_tumor(radius_dict['medium'], (2, 5), (3, 6))
-    elif tumor_type == 'large':
-        create_tumor(radius_dict['large'], (1, 3), (5, 10))
-    elif tumor_type == "mix":
-        create_tumor(radius_dict['tiny'], (3, 10), (0.5, 1))
-        create_tumor(radius_dict['small'], (5, 10), (1, 2))
-        create_tumor(radius_dict['medium'], (2, 5), (3, 6))
-        create_tumor(radius_dict['large'], (1, 3), (5, 10))
+    # 修改调用逻辑
+    if tumor_type == 'mix':
+        for comp in tumor_config['mix']['components']:
+            if random.random() < comp['prob']:
+                create_tumor(tumor_config[comp['type']])
+    else:
+        create_tumor(tumor_config[tumor_type])
 
     geo_mask = geo_mask[enlarge_x // 2:-enlarge_x // 2, enlarge_y // 2:-enlarge_y // 2, enlarge_z // 2:-enlarge_z // 2]
     geo_mask = (geo_mask * mask_scan) >= 1  # Apply mask to geo_mask
@@ -388,7 +424,8 @@ def get_tumor(volume_scan, mask_scan, tumor_type, texture, edge_advanced_blur=Fa
     sigma = np.random.uniform(1, 2)
     if edge_advanced_blur:
         sigma = np.random.uniform(1.0, 2.1)
-    difference = np.random.uniform(65, 145)
+    base_diff = np.random.normal(65, 15)  # 正态分布代替均匀分布
+    difference = base_diff * (0.8 + 0.4*texture)  # 引入纹理相关性
 
     # blur the boundary
     geo_blur = gaussian_filter(geo_mask * 1.0, sigma)

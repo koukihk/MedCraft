@@ -341,6 +341,55 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     start_time = time.time()
     run_loss = AverageMeter()
 
+    for idx, batch_data in enumerate(loader):
+        if isinstance(batch_data, list):
+            data, target = batch_data
+        else:
+            data, target = batch_data["image"], batch_data["label"]
+
+        data = data.cuda(args.rank, non_blocking=True)
+        target = target.cuda(args.rank, non_blocking=True)
+
+        optimizer.zero_grad(set_to_none=True)
+
+        with autocast(enabled=args.amp):
+            logits = model(data)
+            loss = loss_func(logits, target)
+
+        if args.amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
+
+        if args.distributed:
+            loss_list = distributed_all_gather(
+                [loss],
+                out_numpy=True,
+                is_valid=idx < loader.sampler.valid_length
+            )
+            loss_val = np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0)
+            run_loss.update(loss_val, n=args.batch_size * args.world_size)
+        else:
+            run_loss.update(loss.item(), n=args.batch_size)
+
+        if args.rank == 0 and idx % 10 == 0:
+            elapsed = time.time() - start_time
+            print(
+                f"Epoch {epoch}/{args.max_epochs} {idx}/{len(loader)} "
+                f"loss: {run_loss.avg:.4f} time {elapsed:.2f}s"
+            )
+        start_time = time.time()
+
+    return run_loss.avg
+
+def train_epoch_with_mix(model, loader, optimizer, scaler, epoch, loss_func, args):
+    model.train()
+    start_time = time.time()
+    run_loss = AverageMeter()
+
     mixup_loader = MixDataLoader(loader)
 
     for idx, batch_data in enumerate(loader):
@@ -515,8 +564,7 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
 
             data, target = data.cuda(args.rank), target.cuda(args.rank)
 
-            target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2,
-                                                                                                       3).float()
+            # target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2, 3).float()
 
             with autocast(enabled=args.amp):
                 if model_inferer is not None:
@@ -525,8 +573,8 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                 else:
                     logits = model(data)
 
-            # loss = loss_func(logits, target)
-            loss = loss_func(logits, target_one_hot)
+            loss = loss_func(logits, target)
+            # loss = loss_func(logits, target_one_hot)
 
             logits = torch.softmax(logits, 1).cpu().numpy()
             logits = np.argmax(logits, axis=1).astype(np.uint8)
@@ -639,8 +687,6 @@ def run_training(model,
         epoch_time = time.time()
         train_loss = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
                                  args=args)
-        # train_loss = train_epoch_with_validity(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
-        #                          args=args)
 
         if args.rank == 0:
             print('Final training  {}/{}'.format(epoch, args.max_epochs - 1), 'loss: {:.4f}'.format(train_loss),

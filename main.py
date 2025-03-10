@@ -13,7 +13,7 @@ from monai import transforms, data
 from monai.data import load_decathlon_datalist
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
-from monai.transforms import AsDiscrete
+# from monai.transforms import AsDiscrete
 
 from monai_trainer import AMDistributedSampler, run_training
 from networks.swin3d_unetrv2 import SwinUNETR as SwinUNETR_v2
@@ -509,7 +509,6 @@ def main_worker(gpu, args):
         model.load_state_dict(model_dict['state_dict'])
         print('Use pretrained weights')
 
-    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
     from monai.losses import DiceLoss
     import torch.nn.functional as F
     def soft_dice_ce_loss(pred, target, smooth=1e-6):
@@ -520,10 +519,11 @@ def main_worker(gpu, args):
         kl_div = F.kl_div(pred_log_softmax, target, reduction='batchmean')
         return dice + kl_div
 
-    dice_loss = soft_dice_ce_loss
+    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    # dice_loss = soft_dice_ce_loss
 
-    post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
-    post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
+    # post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
+    # post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
 
     val_channel_names = ['val_liver_dice', 'val_tumor_dice']
 
