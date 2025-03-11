@@ -405,11 +405,18 @@ def get_fixed_geo(mask_scan, tumor_type, ellipsoid_model=None):
                 mask_scan)
             new_point = [point[0] + enlarge_x // 2, point[1] + enlarge_y // 2, point[2] + enlarge_z // 2]
 
-            x_low, x_high = new_point[0] - geo.shape[0] // 2, new_point[0] + geo.shape[0] // 2
-            y_low, y_high = new_point[1] - geo.shape[1] // 2, new_point[1] + geo.shape[1] // 2
-            z_low, z_high = new_point[2] - geo.shape[2] // 2, new_point[2] + geo.shape[2] // 2
+            # 添加边界检查确保切片范围有效
+            x_low = max(0, new_point[0] - geo.shape[0] // 2)
+            x_high = min(geo_mask.shape[0], new_point[0] + geo.shape[0] // 2)
+            y_low = max(0, new_point[1] - geo.shape[1] // 2)
+            y_high = min(geo_mask.shape[1], new_point[1] + geo.shape[1] // 2)
+            z_low = max(0, new_point[2] - geo.shape[2] // 2)
+            z_high = min(geo_mask.shape[2], new_point[2] + geo.shape[2] // 2)
 
-            np.add.at(geo_mask, (slice(x_low, x_high), slice(y_low, y_high), slice(z_low, z_high)), geo)
+            # 调整geo数组大小以匹配目标区域
+            actual_geo = geo[:x_high-x_low, :y_high-y_low, :z_high-z_low]
+            
+            np.add.at(geo_mask, (slice(x_low, x_high), slice(y_low, y_high), slice(z_low, z_high)), actual_geo)
 
     # 修改调用逻辑
     if tumor_type == 'mix':
