@@ -1,5 +1,4 @@
 import json
-import os
 import shutil
 import sys
 
@@ -11,34 +10,6 @@ from torch.cuda.amp import GradScaler  # native AMP
 from torch.utils.tensorboard import SummaryWriter
 
 sys.path.append('../../pipextra/lib/python3.6/site-packages')  # add missing packages
-
-
-def json_get_fold(datalist, basedir, fold=0, key='training'):
-    with open(datalist) as f:
-        json_data = json.load(f)
-
-    json_data = json_data[key]
-
-    for d in json_data:
-        for k, v in d.items():
-            if isinstance(d[k], list):
-                d[k] = [os.path.join(basedir, iv) for iv in d[k]]
-            elif isinstance(d[k], str):
-                d[k] = os.path.join(basedir, d[k]) if len(d[k]) > 0 else d[k]
-
-    tr = []
-    val = []
-    for d in json_data:
-        if 'fold' in d and d['fold'] == fold:
-            val.append(d)
-        else:
-            tr.append(d)
-
-    return tr, val
-
-
-import math
-
 
 # template copied from torch.utils.data.distributed.DistributedSampler
 class AMDistributedSampler(torch.utils.data.Sampler):
@@ -178,46 +149,6 @@ from torch.cuda.amp import autocast
 import matplotlib.pyplot as plt
 import os
 
-def visualize_mixed_samples(data, target, num_samples=5, save_dir='visualizations'):
-    """
-    Visualize mixed samples and save the figures to a specified directory.
-
-    Args:
-        data (torch.Tensor): The mixed image data.
-        target (torch.Tensor): The mixed target labels.
-        num_samples (int): Number of samples to visualize.
-        save_dir (str): Directory to save the visualization images.
-    """
-    # Ensure the save directory exists
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    data = data.cpu().numpy()
-    target = target.cpu().numpy()
-
-    for i in range(min(num_samples, data.shape[0])):
-        plt.figure(figsize=(12, 4))
-
-        # Sagittal view of mixed image
-        plt.subplot(1, 3, 1)
-        plt.imshow(data[i, 0, :, :, data.shape[-1] // 2], cmap='gray')
-        plt.title('Mixed Image (Sagittal)')
-
-        # Sagittal view of mixed label
-        plt.subplot(1, 3, 2)
-        plt.imshow(target[i, 0, :, :, data.shape[-1] // 2], cmap='jet')
-        plt.title('Mixed Label (Sagittal)')
-
-        # Axial view of mixed image
-        plt.subplot(1, 3, 3)
-        plt.imshow(data[i, 0, data.shape[-3] // 2, :, :], cmap='gray')
-        plt.title('Mixed Image (Axial)')
-
-        # Save the figure to the specified directory
-        save_path = os.path.join(save_dir, f'sample_{i}.png')
-        plt.savefig(save_path)
-        plt.close()  # Close the figure to free memory
-
 class MixDataLoader:
     def __init__(self, loader):
         self.loader = loader
@@ -225,49 +156,6 @@ class MixDataLoader:
 
     def get_random_batch(self):
         return random.choice(self.data_list)
-
-
-# Mixup
-def mixup_3d(data, target, mixup_loader, alpha=0.4, mixup_prob=0.5, num_classes=3):
-    if random.random() > mixup_prob or alpha <= 0:
-        return data, target
-    beta_dist = Beta(alpha, alpha)
-    lam = beta_dist.sample().item()
-    random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].to(data.device)
-    other_target = random_batch["label"].to(target.device)
-    mixed_data = lam * data + (1 - lam) * other_data
-    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    mixed_target = lam * target_one_hot + (1 - lam) * other_target_one_hot
-    return mixed_data, mixed_target
-
-# CutMix
-def cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
-    if np.random.rand() > cutmix_prob:
-        return data, target
-    random_batch = mixup_loader.get_random_batch()
-    other_data = random_batch["image"].to(data.device)
-    other_target = random_batch["label"].to(target.device)
-    lam = np.random.beta(beta, beta) if beta > 0 else 1
-    D, H, W = data.shape[2:]
-    cut_d = int(D * np.sqrt(1 - lam))
-    cut_h = int(H * np.sqrt(1 - lam))
-    cut_w = int(W * np.sqrt(1 - lam))
-    d1 = np.random.randint(0, D - cut_d + 1)
-    h1 = np.random.randint(0, H - cut_h + 1)
-    w1 = np.random.randint(0, W - cut_w + 1)
-    mixed_data = data.clone()
-    mixed_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
-        other_data[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
-    target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    other_target_one_hot = F.one_hot(other_target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-    mixed_target = target_one_hot.clone()
-    lam_region = (cut_d * cut_h * cut_w) / (D * H * W)
-    mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
-        (1 - lam_region) * target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] + \
-        lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
-    return mixed_data, mixed_target
 
 
 def tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=1.0, mixup_prob=0.5, num_classes=3):
@@ -470,20 +358,6 @@ def train_epoch_with_validity(model, loader, optimizer, scaler, epoch, loss_func
         data = data.cuda(args.rank, non_blocking=True)
         target = target.cuda(args.rank, non_blocking=True)
 
-        if args.cutmix:
-            data, target = cutmix_3d(
-                data, target, mixup_loader,
-                beta=args.cutmix_beta,
-                cutmix_prob=args.cutmix_prob
-            )
-
-        if args.mixup:
-            data, target = mixup_3d(
-                data, target, mixup_loader,
-                alpha=args.mixup_alpha,
-                mixup_prob=args.mixup_prob
-            )
-
         optimizer.zero_grad(set_to_none=True)
 
         with autocast(enabled=args.amp):
@@ -564,7 +438,7 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
 
             data, target = data.cuda(args.rank), target.cuda(args.rank)
 
-            # target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2, 3).float()
+            target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2, 3).float()
 
             with autocast(enabled=args.amp):
                 if model_inferer is not None:
@@ -573,8 +447,8 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                 else:
                     logits = model(data)
 
-            loss = loss_func(logits, target)
-            # loss = loss_func(logits, target_one_hot)
+            # loss = loss_func(logits, target)
+            loss = loss_func(logits, target_one_hot)
 
             logits = torch.softmax(logits, 1).cpu().numpy()
             logits = np.argmax(logits, axis=1).astype(np.uint8)
@@ -685,7 +559,7 @@ def run_training(model,
         print(args.rank, time.ctime(), 'Epoch:', epoch)
 
         epoch_time = time.time()
-        train_loss = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
+        train_loss = train_epoch_with_mix(model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func,
                                  args=args)
 
         if args.rank == 0:

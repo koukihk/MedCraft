@@ -242,7 +242,7 @@ def _get_transform(args, ellipsoid_model=None, filter_model=None, filter_inferer
     if args.syn:
         train_transform = transforms.Compose(
             [
-                transforms.LoadImaged(keys=["image", "label"]),
+                transforms.LoadImaged(keys=["image", "label"], reader="NibabelReader"),
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
@@ -519,8 +519,8 @@ def main_worker(gpu, args):
         kl_div = F.kl_div(pred_log_softmax, target, reduction='batchmean')
         return dice + kl_div
 
-    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
-    # dice_loss = soft_dice_ce_loss
+    # dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    dice_loss = soft_dice_ce_loss
 
     # post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
     # post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
@@ -563,15 +563,16 @@ def main_worker(gpu, args):
     train_ds = data.SmartCacheDataset(
         data=train_datalist,
         transform=train_transform,
-        cache_num=args.cache_num,
+        cache_num=min(args.cache_num, len(new_datalist)),
         cache_rate=1.0,
-        num_init_workers=args.workers // 2,
-        num_replace_workers=4
+        num_init_workers=max(4, args.workers//2),
+        num_replace_workers=2,
+        progress=False
     )
 
     train_sampler = AMDistributedSampler(train_ds) if args.distributed else None
-    train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=4,
-                                   sampler=train_sampler, pin_memory=True)
+    train_loader = data.DataLoader(train_ds, batch_size=args.batch_size, shuffle=(train_sampler is None), num_workers=8,
+                                   sampler=train_sampler, pin_memory=True, persistent_workers=True)
 
     val_ds = data.Dataset(data=new_val_files, transform=val_transform)
     val_sampler = AMDistributedSampler(val_ds, shuffle=False) if args.distributed else None
