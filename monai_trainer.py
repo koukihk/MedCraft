@@ -194,9 +194,9 @@ def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5,
     other_target = random_batch["label"].to(target.device)
     lam = np.random.beta(beta, beta) if beta > 0 else 1
     D, H, W = data.shape[2:]
-    cut_d = int(D * np.sqrt(1 - lam))
-    cut_h = int(H * np.sqrt(1 - lam))
-    cut_w = int(W * np.sqrt(1 - lam))
+    cut_d = int(D * (lam ** (1 / 3)))
+    cut_h = int(H * (lam ** (1 / 3)))
+    cut_w = int(W * (lam ** (1 / 3)))
     tumor_mask = (target.squeeze(1) == 2).float()
     tumor_coords = torch.nonzero(tumor_mask)
 
@@ -219,9 +219,11 @@ def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5,
                                                                                                       3).float()
     mixed_target = target_one_hot.clone()
     lam_region = (cut_d * cut_h * cut_w) / (D * H * W)
+    # mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
+    #     (1 - lam_region) * target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] + \
+    #     lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
     mixed_target[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] = \
-        (1 - lam_region) * target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w] + \
-        lam_region * other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
+        other_target_one_hot[:, :, d1:d1 + cut_d, h1:h1 + cut_h, w1:w1 + cut_w]
     return mixed_data, mixed_target
 
 def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
