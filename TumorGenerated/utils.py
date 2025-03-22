@@ -5,79 +5,8 @@ import cv2
 import elasticdeform
 import numpy as np
 import pywt
-from noise import snoise3
 from scipy.ndimage import gaussian_filter, sobel, gaussian_filter1d
 from skimage.restoration import denoise_tv_chambolle
-
-
-def generate_complex_noise(mask_shape, scale=10):
-    freq = 1.0 / scale
-    octaves = random.randint(2, 4)
-    persistence = np.random.uniform(0.4, 0.6)
-    lacunarity = np.random.uniform(1.8, 2.2)
-    
-    # 生成坐标网格
-    x = np.arange(mask_shape[0]) * freq
-    y = np.arange(mask_shape[1]) * freq
-    z = np.arange(mask_shape[2]) * freq
-    
-    # 使用向量化计算代替网格参数
-    def noise_func(x, y, z):
-        return snoise3(x, y, z,
-                      octaves=octaves,
-                      persistence=persistence,
-                      lacunarity=lacunarity)
-    
-    # 生成噪声场
-    noise = np.vectorize(noise_func)(*np.meshgrid(x, y, z, indexing='ij'))
-    
-    # 归一化到0-1范围
-    return (noise - noise.min()) / (noise.max() - noise.min())
-
-
-def generate_prob_function(mask_shape):
-    sigma = np.random.uniform(3, 15)
-    # uniform noise generate
-    a = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-
-    # Gaussian filter
-    # this taks some time
-    a_2 = gaussian_filter(a, sigma=sigma)
-
-    scale = np.random.uniform(0.19, 0.21)
-    base = np.random.uniform(0.04, 0.06)
-    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2)) + base
-
-    return a
-
-
-# first generate 5*200*200*200
-def get_texture(mask_shape):
-    # get the prob function
-    a = generate_prob_function(mask_shape)
-
-    # sample once
-    random_sample = np.random.uniform(0, 1, size=(mask_shape[0], mask_shape[1], mask_shape[2]))
-
-    # if a(x) > random_sample(x), set b(x) = 1
-    b = (a > random_sample).astype(float)  # int type can't do Gaussian filter
-
-    # Gaussian filter
-    if np.random.uniform() < 0.7:
-        sigma_b = np.random.uniform(3, 5)
-    else:
-        sigma_b = np.random.uniform(5, 8)
-
-    # this takes some time
-    b2 = gaussian_filter(b, sigma_b)
-
-    # Scaling and clipping
-    u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b2 > 0.12  # this is for calculte the mean_0.2(b2)
-    beta = u_0 / (np.sum(b2 * threshold_mask) / threshold_mask.sum())
-    Bj = np.clip(beta * b2, 0, 1)  # 目前是0-1区间
-
-    return Bj
 
 
 # here we want to get predefined texutre:
@@ -106,54 +35,6 @@ def get_predefined_texture(mask_shape, sigma_a, sigma_b):
 def get_predefined_texture_b(mask_shape, sigma_a, sigma_b):
     # Step 1: Uniform noise generation
     a = np.random.uniform(0, 1, size=mask_shape).astype(np.float32)
-
-    # Step 2: Nonlinear diffusion filtering
-    a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
-
-    # Step 3: 3D Wavelet transform
-    coeffs = pywt.wavedecn(a_denoised, wavelet='db4', level=2)
-    coeffs[1] = {k: 0.3 * v for k, v in coeffs[1].items()}  # 只保留低层高频信息
-    for i in range(2, len(coeffs)):  # 直接遍历后续层，避免创建额外变量
-        coeffs[i] = {k: np.zeros_like(v) for k, v in coeffs[i].items()}
-    a_wavelet_denoised = pywt.waverecn(coeffs, wavelet='db4')
-
-    # Normalize to 0-1
-    min_val, max_val = np.min(a_wavelet_denoised), np.max(a_wavelet_denoised)
-    a_wavelet_denoised = (a_wavelet_denoised - min_val) / (max_val - min_val + 1e-6)  # 避免除0错误
-
-    # Step 4: Optimized Gaussian filter (using separable filtering)
-    a_2 = a_wavelet_denoised
-    for ax in range(3):  # 分别沿 x, y, z 方向滤波，减少计算量
-        a_2 = gaussian_filter1d(a_2, sigma=sigma_a, axis=ax, mode='nearest')
-
-    scale = np.random.uniform(0.19, 0.21)
-    base = np.random.uniform(0.04, 0.06)
-    a = scale * (a_2 - np.min(a_2)) / (np.max(a_2) - np.min(a_2) + 1e-6) + base
-
-    # Sample once
-    random_sample = np.random.uniform(0, 1, size=mask_shape).astype(np.float32)
-    b = (a > random_sample).astype(np.float32)
-
-    # Apply Gaussian filter using separable filtering
-    from joblib import Parallel, delayed
-    def apply_filter(axis):
-        return gaussian_filter1d(b, sigma=sigma_b, axis=axis, mode='nearest')
-    results = Parallel(n_jobs=3)(delayed(apply_filter)(ax) for ax in range(3))
-    b = np.mean(results, axis=0) 
-
-    # Scaling and clipping
-    u_0 = np.random.uniform(0.5, 0.55)
-    threshold_mask = b > 0.12
-    threshold_sum = np.sum(threshold_mask)
-    beta = u_0 / (np.sum(b * threshold_mask) / (threshold_sum + 1e-6))  # 避免除 0
-    Bj = np.clip(beta * b, 0, 1)
-
-    return Bj
-
-def get_predefined_texture_c(mask_shape, sigma_a, sigma_b):
-    # Step 1: Complex noise generation (e.g., Simplex noise)
-    simplex_scale = int(np.random.uniform(4, 10))
-    a = generate_complex_noise(mask_shape, simplex_scale)
 
     # Step 2: Nonlinear diffusion filtering
     a_denoised = denoise_tv_chambolle(a, weight=0.1, multichannel=False)
