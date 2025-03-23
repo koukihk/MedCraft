@@ -519,8 +519,8 @@ def main_worker(gpu, args):
         kl_div = F.kl_div(pred_log_softmax, target, reduction='batchmean')
         return dice + kl_div
 
-    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
-    # dice_loss = soft_dice_ce_loss
+    # dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    dice_loss = soft_dice_ce_loss
 
     # post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)
     # post_pred = AsDiscrete(argmax=True, to_onehot=True, n_classes=args.num_classes)
