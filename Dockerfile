@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libopenblas-dev \
     tzdata \
+    libgl1-mesa-glx \
     && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && dpkg-reconfigure -f noninteractive tzdata \
     && rm -rf /var/lib/apt/lists/*
