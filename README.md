@@ -65,11 +65,8 @@ Please download these datasets and save to `<data-path>` (user-defined).
 - 04 [Liver Tumor Segmentation Challenge (LiTS)](https://competitions.codalab.org/competitions/17094)
 
 ```bash
-wget https://huggingface.co/datasets/koukihk/MedCraft/resolve/main/01_Multi-Atlas_Labeling.tar.gz?download=true # 01 Multi-Atlas_Labeling.tar.gz (1.53 GB)
-wget https://huggingface.co/datasets/koukihk/MedCraft/resolve/main/02_TCIA_Pancreas-CT.tar.gz?download=true # 02 TCIA_Pancreas-CT.tar.gz (7.51 GB)
-wget https://huggingface.co/datasets/koukihk/MedCraft/resolve/main/03_CHAOS.tar.gz?download=true # 03 CHAOS.tar.gz (925.3 MB)
-wget https://huggingface.co/datasets/koukihk/MedCraft/resolve/main/04_LiTS.tar.gz?download=true # 04 LiTS.tar.gz (17.42 GB)
-wget https://huggingface.co/datasets/qicq1c/Pubilcdataset/resolve/main/10_Decathlon/Task03_Liver.tar.gz?download=true # Task03_Liver.tar.gz (28.7 GB)
+wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/CT.zip
+wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/Task03_Liver.zip
 ```
 
 #### Data Setting
@@ -107,7 +104,7 @@ python transfer_label.py --data_path <data-path>  # <data-path> is user-defined 
 or you can just download the label
 
 ```bash
-wget https://huggingface.co/datasets/koukihk/MedCraft/resolve/main/label.zip?download=true
+wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/label.zip
 ```
 
 ## 1. Train segmentation models using synthetic tumors
