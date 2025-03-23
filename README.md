@@ -65,8 +65,8 @@ Please download these datasets and save to `<data-path>` (user-defined).
 - 04 [Liver Tumor Segmentation Challenge (LiTS)](https://competitions.codalab.org/competitions/17094)
 
 ```bash
-wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/CT.zip
-wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/Task03_Liver.zip
+wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/CT.zip # from ModelScope
+wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/Task03_Liver.zip # from ModelScope
 ```
 
 #### Data Setting
@@ -104,7 +104,7 @@ python transfer_label.py --data_path <data-path>  # <data-path> is user-defined 
 or you can just download the label
 
 ```bash
-wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/label.zip
+wget https://www.modelscope.cn/datasets/koukihk/MedCraft/resolve/master/label.zip # from ModelScope
 ```
 
 ## 1. Train segmentation models using synthetic tumors
