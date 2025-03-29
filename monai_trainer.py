@@ -160,7 +160,7 @@ class MixDataLoader:
 def tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=1.0, mixup_prob=0.5, num_classes=3):
     # Convert target to soft labels regardless of mixup application
     target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-
+    # print("target_one_hot.shape", target_one_hot.shape)
     if random.random() > mixup_prob or alpha <= 0:
         return data, target_one_hot  # Return soft labels even if no mixup
 
@@ -184,7 +184,7 @@ def tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=1.0, mixup_prob=0.
 def tumor_aware_cutmix_3d(data, target, mixup_loader, beta=1.0, cutmix_prob=0.5, num_classes=3):
     # Convert target to soft labels regardless of cutmix application
     target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=num_classes).permute(0, 4, 1, 2, 3).float()
-
+    # print("target_one_hot.shape", target_one_hot.shape)
     if np.random.rand() > cutmix_prob:
         return data, target_one_hot  # Return soft labels even if no cutmix
 
@@ -291,10 +291,14 @@ def train_epoch_with_mix(model, loader, optimizer, scaler, epoch, loss_func, arg
         target = target.cuda(args.rank, non_blocking=True)
 
         if args.mixup:
+            # print("data.shape", data.shape)
+            # print("target.shape", target.shape)
             data, target = tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=args.mixup_alpha,
                                                   mixup_prob=args.mixup_prob, num_classes=args.num_classes)
 
         if args.cutmix:
+            # print("data.shape", data.shape)
+            # print("target.shape", target.shape)
             data, target = tumor_aware_cutmix_3d(data, target, mixup_loader, beta=args.cutmix_beta,
                                                  cutmix_prob=args.cutmix_prob, num_classes=args.num_classes)
 

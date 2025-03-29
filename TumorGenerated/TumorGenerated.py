@@ -6,7 +6,7 @@ from monai.config import KeysCollection
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.transform import MapTransform, RandomizableTransform
 
-from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_b, get_predefined_texture_c)
+from .utils import (SynthesisTumor, get_predefined_texture, get_predefined_texture_b)
 
 
 class TumorGenerated(RandomizableTransform, MapTransform):
@@ -36,7 +36,7 @@ class TumorGenerated(RandomizableTransform, MapTransform):
         predefined_texture_shape = (420, 300, 320)
         for sigma_a in sigma_as:
             for sigma_b in sigma_bs:
-                texture = get_predefined_texture_b(predefined_texture_shape, sigma_a, sigma_b)
+                texture = get_predefined_texture(predefined_texture_shape, sigma_a, sigma_b)
                 self.textures.append(texture)
         print("All predefined texture have generated.")
 
