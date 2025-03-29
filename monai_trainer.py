@@ -295,12 +295,16 @@ def train_epoch_with_mix(model, loader, optimizer, scaler, epoch, loss_func, arg
             # print("target.shape", target.shape)
             data, target = tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=args.mixup_alpha,
                                                   mixup_prob=args.mixup_prob, num_classes=args.num_classes)
+            # print("data.after.shape", data.shape)
+            # print("target.after.shape", target.shape)
 
         if args.cutmix:
             # print("data.shape", data.shape)
             # print("target.shape", target.shape)
             data, target = tumor_aware_cutmix_3d(data, target, mixup_loader, beta=args.cutmix_beta,
                                                  cutmix_prob=args.cutmix_prob, num_classes=args.num_classes)
+            # print("data.after.shape", data.shape)
+            # print("target.after.shape", target.shape)
 
         optimizer.zero_grad(set_to_none=True)
 
