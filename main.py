@@ -36,6 +36,7 @@ parser.add_argument('--filter_name', default='unet', type=str)
 parser.add_argument('--cutmix', action='store_true', help='Enable cutmix augmentation')
 parser.add_argument('--cutmix_beta', type=float, default=1.0, help='Beta parameter for cutmix')
 parser.add_argument('--cutmix_prob', type=float, default=0.5, help='Probability of applying cutmix')
+parser.add_argument('--simple_mixup', action='store_true', help='Enable simple mixup augmentation')
 parser.add_argument('--mixup', action='store_true', help='Enable mixup augmentation')
 parser.add_argument('--mixup_alpha', type=float, default=1.0, help='Alpha parameter for mixup')
 parser.add_argument('--mixup_prob', type=float, default=0.5, help='Probability of applying mixup')
@@ -242,7 +243,7 @@ def _get_transform(args, ellipsoid_model=None, filter_model=None, filter_inferer
     if args.syn:
         train_transform = transforms.Compose(
             [
-                transforms.LoadImaged(keys=["image", "label"], reader="NibabelReader"),
+                transforms.LoadImaged(keys=["image", "label"]),
                 transforms.AddChanneld(keys=["image", "label"]),
                 transforms.Orientationd(keys=["image", "label"], axcodes="RAS"),
                 transforms.Spacingd(keys=["image", "label"], pixdim=(1.0, 1.0, 1.0),
@@ -519,8 +520,8 @@ def main_worker(gpu, args):
         kl_div = F.kl_div(pred_log_softmax, target, reduction='batchmean')
         return dice + kl_div
 
-    dice_loss = DiceCELoss(to_onehot_y=False, softmax=True, squared_pred=True, smooth_nr=1e-6, smooth_dr=1e-6)
-    # dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
+    # dice_loss = DiceCELoss(to_onehot_y=False, softmax=True, squared_pred=True, smooth_nr=1e-6, smooth_dr=1e-6)
+    dice_loss = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, smooth_nr=0, smooth_dr=1e-6)
     # dice_loss = soft_dice_ce_loss
 
     # post_label = AsDiscrete(to_onehot=True, n_classes=args.num_classes)

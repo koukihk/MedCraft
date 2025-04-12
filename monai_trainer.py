@@ -147,6 +147,7 @@ from torch.distributions import Beta
 from torch.cuda.amp import autocast
 
 import os
+from mixup import mixup
 
 class MixDataLoader:
     def __init__(self, loader):
@@ -290,21 +291,22 @@ def train_epoch_with_mix(model, loader, optimizer, scaler, epoch, loss_func, arg
         data = data.cuda(args.rank, non_blocking=True)
         target = target.cuda(args.rank, non_blocking=True)
 
-        if args.mixup:
-            # print("data.shape", data.shape)
-            # print("target.shape", target.shape)
+        # --- 添加 simple_mixup 逻辑 ---
+        if args.simple_mixup: # 添加一个新的命令行参数来控制
+            # 确保 image 和 label 都在列表中，以应用相同的空间变换
+            mixed_input = mixup([data, target])
+            data = mixed_input[0]
+            target = mixed_input[1]
+        # --- 现有 mixup/cutmix 逻辑 ---
+        elif args.mixup:
+            # 需要 mixup_loader 来获取随机批次
             data, target = tumor_weighted_mixup_3d(data, target, mixup_loader, alpha=args.mixup_alpha,
                                                   mixup_prob=args.mixup_prob, num_classes=args.num_classes)
-            # print("data.after.shape", data.shape)
-            # print("target.after.shape", target.shape)
-
-        if args.cutmix:
-            # print("data.shape", data.shape)
-            # print("target.shape", target.shape)
+        elif args.cutmix:
+            # 需要 mixup_loader 来获取随机批次
             data, target = tumor_aware_cutmix_3d(data, target, mixup_loader, beta=args.cutmix_beta,
                                                  cutmix_prob=args.cutmix_prob, num_classes=args.num_classes)
-            # print("data.after.shape", data.shape)
-            # print("target.after.shape", target.shape)
+        # -----------------------------
 
         optimizer.zero_grad(set_to_none=True)
 
@@ -445,7 +447,7 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
 
             data, target = data.cuda(args.rank), target.cuda(args.rank)
 
-            target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2, 3).float()
+            # target_one_hot = F.one_hot(target.squeeze(1).long(), num_classes=args.num_classes).permute(0, 4, 1, 2, 3).float()
 
             with autocast(enabled=args.amp):
                 if model_inferer is not None:
@@ -454,8 +456,8 @@ def val_epoch(model, loader, val_shape_dict, epoch, loss_func, args, model_infer
                 else:
                     logits = model(data)
 
-            # loss = loss_func(logits, target)
-            loss = loss_func(logits, target_one_hot)
+            loss = loss_func(logits, target)
+            # loss = loss_func(logits, target_one_hot)
 
             logits = torch.softmax(logits, 1).cpu().numpy()
             logits = np.argmax(logits, axis=1).astype(np.uint8)
